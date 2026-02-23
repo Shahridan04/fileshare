@@ -192,6 +192,19 @@ exports.onNotificationCreated = functions.firestore
   });
 
 /**
+ * Helper to escape HTML to prevent XSS
+ */
+function escapeHtml(unsafe) {
+  if (unsafe === undefined || unsafe === null) return '';
+  return String(unsafe)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
  * Generate HTML email template
  */
 function generateEmailHTML(notification, userData) {
@@ -199,6 +212,11 @@ function generateEmailHTML(notification, userData) {
   const userName = userData.displayName || userData.name || 'User';
   const appUrl = 'https://file-share-f8260.web.app';
   
+  const escapedTitle = escapeHtml(title || 'New Notification');
+  const escapedMessage = escapeHtml(message || '');
+  const escapedUserName = escapeHtml(userName);
+  const escapedFileName = escapeHtml(fileName || '');
+
   const getTypeColor = (type) => {
     switch (type) {
       case 'approval': return '#10b981';
@@ -225,14 +243,14 @@ function generateEmailHTML(notification, userData) {
             <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
               <tr>
                 <td style="background: ${color}; padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
-                  <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">${title}</h1>
+                  <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">${escapedTitle}</h1>
                 </td>
               </tr>
               <tr>
                 <td style="padding: 40px 30px;">
-                  <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">Hello ${userName},</p>
-                  <p style="margin: 0 0 30px 0; color: #4b5563; font-size: 15px; line-height: 1.6;">${message}</p>
-                  ${fileName ? `<div style="background-color: #f9fafb; border-left: 4px solid ${color}; padding: 16px; margin: 20px 0; border-radius: 4px;"><p style="margin: 0; color: #1f2937; font-size: 14px; font-weight: 600;">📄 File: ${fileName}</p></div>` : ''}
+                  <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">Hello ${escapedUserName},</p>
+                  <p style="margin: 0 0 30px 0; color: #4b5563; font-size: 15px; line-height: 1.6;">${escapedMessage}</p>
+                  ${fileName ? `<div style="background-color: #f9fafb; border-left: 4px solid ${color}; padding: 16px; margin: 20px 0; border-radius: 4px;"><p style="margin: 0; color: #1f2937; font-size: 14px; font-weight: 600;">📄 File: ${escapedFileName}</p></div>` : ''}
                   <div style="text-align: center; margin: 30px 0;">
                     <a href="${appUrl}/dashboard" style="display: inline-block; background-color: ${color}; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 15px;">View in Dashboard</a>
                   </div>
