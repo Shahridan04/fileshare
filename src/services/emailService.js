@@ -17,8 +17,8 @@
 export const sendEmailNotification = async (emailData) => {
   try {
     // Check if we're in production or development
-    const isProduction = window.location.hostname !== 'localhost' && 
-                        !window.location.hostname.includes('127.0.0.1');
+    const isProduction = window.location.hostname !== 'localhost' &&
+      !window.location.hostname.includes('127.0.0.1');
 
     if (isProduction) {
       // In production, call Cloud Function
@@ -30,10 +30,10 @@ export const sendEmailNotification = async (emailData) => {
         subject: emailData.subject,
         htmlBody: emailData.htmlBody
       });
-      
+
       // You can also use a service like EmailJS for development testing
       // return await sendEmailViaEmailJS(emailData);
-      
+
       return { success: true, message: 'Email logged (dev mode)' };
     }
   } catch (error) {
@@ -50,10 +50,10 @@ const sendEmailViaCloudFunction = async (emailData) => {
     // Use Firebase Functions SDK
     const { getFunctions, httpsCallable } = await import('firebase/functions');
     const { functions } = await import('../firebase');
-    
+
     const sendEmail = httpsCallable(functions, 'sendEmailNotification');
     const result = await sendEmail(emailData);
-    
+
     return result.data;
   } catch (error) {
     console.error('Error calling email Cloud Function:', error);
@@ -66,7 +66,7 @@ const sendEmailViaCloudFunction = async (emailData) => {
  */
 export const generateEmailTemplate = (notification, userEmail, userName) => {
   const { type, title, message, fileName, fileId, createdAt } = notification;
-  
+
   // Get notification type styling
   const getTypeColor = (type) => {
     switch (type) {
@@ -83,10 +83,27 @@ export const generateEmailTemplate = (notification, userEmail, userName) => {
     }
   };
 
+  // Escape HTML entities to prevent XSS in email templates
+  const escapeHtml = (str) => {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  };
+
   const typeStyle = getTypeColor(type);
   const appUrl = window.location.origin;
   const fileUrl = fileId ? `${appUrl}/view/${fileId}` : `${appUrl}/dashboard`;
   const date = createdAt?.toDate ? createdAt.toDate().toLocaleString() : new Date().toLocaleString();
+
+  // Sanitize user-supplied values before HTML interpolation
+  const safeTitle = escapeHtml(title);
+  const safeUserName = escapeHtml(userName) || 'User';
+  const safeFileName = escapeHtml(fileName);
+  const safeMessage = escapeHtml(message);
 
   return `
     <!DOCTYPE html>
@@ -94,7 +111,7 @@ export const generateEmailTemplate = (notification, userEmail, userName) => {
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${title}</title>
+      <title>${safeTitle}</title>
     </head>
     <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
@@ -105,7 +122,7 @@ export const generateEmailTemplate = (notification, userEmail, userName) => {
               <tr>
                 <td style="background: linear-gradient(135deg, ${typeStyle.bg} 0%, ${typeStyle.bg}dd 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
                   <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
-                    ${typeStyle.icon} ${title}
+                    ${typeStyle.icon} ${safeTitle}
                   </h1>
                 </td>
               </tr>
@@ -114,17 +131,17 @@ export const generateEmailTemplate = (notification, userEmail, userName) => {
               <tr>
                 <td style="padding: 40px 30px;">
                   <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px; line-height: 1.6;">
-                    Hello ${userName || 'User'},
+                    Hello ${safeUserName},
                   </p>
                   
                   <p style="margin: 0 0 30px 0; color: #4b5563; font-size: 15px; line-height: 1.6;">
-                    ${message}
+                    ${safeMessage}
                   </p>
                   
-                  ${fileName ? `
+                  ${safeFileName ? `
                     <div style="background-color: #f9fafb; border-left: 4px solid ${typeStyle.bg}; padding: 16px; margin: 20px 0; border-radius: 4px;">
                       <p style="margin: 0; color: #1f2937; font-size: 14px; font-weight: 600;">
-                        📄 File: ${fileName}
+                        📄 File: ${safeFileName}
                       </p>
                     </div>
                   ` : ''}

@@ -12,10 +12,20 @@ export default function ViewFile() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { fileId: pathFileId } = useParams();
-  
+
   // Get fileId from either URL path or search params
   const fileId = pathFileId || searchParams.get('id');
-  const encryptionKey = searchParams.get('key');
+  // Read encryption key from URL fragment (hash) instead of query params for security.
+  // Fragments (#key=...) are never sent to the server, preventing key leakage.
+  const encryptionKey = (() => {
+    const hash = window.location.hash;
+    if (hash) {
+      const params = new URLSearchParams(hash.substring(1));
+      return params.get('key');
+    }
+    // Fallback to query param for backward compatibility with existing links
+    return searchParams.get('key');
+  })();
 
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(true);

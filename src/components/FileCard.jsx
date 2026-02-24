@@ -61,13 +61,13 @@ export default function FileCard({ file, isOwner, onDeleted, onSelect, isSelecte
   const categoryColor = CATEGORY_COLORS[category] || CATEGORY_COLORS['other'];
   const daysLeft = daysUntilExpiration(file);
   const expired = isFileExpired(file);
-  
+
   // HOS and Exam Unit can view files but not edit/delete
   const canViewDetails = isOwner || userRole === 'hos' || userRole === 'exam_unit';
   const canEdit = isOwner; // Only owner can upload new version, delete
 
   const handleView = () => {
-    navigate(`/file?id=${file.id}&key=${encodeURIComponent(file.encryptionKey)}`);
+    navigate(`/file?id=${file.id}#key=${encodeURIComponent(file.encryptionKey)}`);
   };
 
   const handleDelete = async () => {
@@ -78,15 +78,15 @@ export default function FileCard({ file, isOwner, onDeleted, onSelect, isSelecte
     setDeleting(true);
     try {
       const user = getCurrentUser();
-      
+
       // Delete from storage (will not fail if file doesn't exist)
       await deleteFile(user.uid, file.fileId, file.fileName);
-      
+
       // Delete metadata from Firestore (always do this)
       await deleteFileMetadata(file.id);
-      
+
       console.log('✅ File and metadata deleted successfully');
-      
+
       if (onDeleted) {
         onDeleted();
       }
@@ -138,7 +138,7 @@ export default function FileCard({ file, isOwner, onDeleted, onSelect, isSelecte
   // Determine card background color based on status (consistent with ReviewFileCard)
   const getCardBackground = () => {
     if (isSelected) return 'border-blue-500 bg-blue-50';
-    
+
     const status = file.workflowStatus;
     if (status === 'PENDING_HOS_REVIEW' || status === 'PENDING_EXAM_UNIT') {
       return 'bg-yellow-50/50 border-yellow-300'; // Yellow for files needing review
@@ -167,63 +167,63 @@ export default function FileCard({ file, isOwner, onDeleted, onSelect, isSelecte
           </div>
         )}
 
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-            <IconComponent className="w-5 h-5 text-blue-600" />
-          </div>
-          <div className="min-w-0 flex-1">
+            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <IconComponent className="w-5 h-5 text-blue-600" />
+            </div>
+            <div className="min-w-0 flex-1">
               <h3 className="font-medium text-gray-900 truncate text-sm" title={file.fileName}>
-              {file.fileName}
-            </h3>
-            <p className="text-xs text-gray-500">{formatFileSize(file.fileSize)}</p>
+                {file.fileName}
+              </h3>
+              <p className="text-xs text-gray-500">{formatFileSize(file.fileSize)}</p>
+            </div>
           </div>
-        </div>
 
-        {/* Menu */}
+          {/* Menu */}
           <div className="relative ml-2 flex-shrink-0">
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="p-1 hover:bg-gray-100 rounded transition-colors"
-          >
-            <MoreVertical className="w-5 h-5 text-gray-500" />
-          </button>
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="p-1 hover:bg-gray-100 rounded transition-colors"
+            >
+              <MoreVertical className="w-5 h-5 text-gray-500" />
+            </button>
 
-          {menuOpen && (
-            <>
-              <div
-                className="fixed inset-0 z-10"
-                onClick={() => setMenuOpen(false)}
-              ></div>
+            {menuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setMenuOpen(false)}
+                ></div>
                 <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                {onViewPDF && (userRole === 'hos' || userRole === 'exam_unit') ? (
-                  <button
-                    onClick={() => {
-                      onViewPDF(file);
-                      setMenuOpen(false);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700"
-                  >
-                    <Eye className="w-4 h-4" />
-                    View PDF
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      handleView();
-                      setMenuOpen(false);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700"
-                  >
-                    <Download className="w-4 h-4" />
-                    Download
-                  </button>
-                )}
-                  
+                  {onViewPDF && (userRole === 'hos' || userRole === 'exam_unit') ? (
+                    <button
+                      onClick={() => {
+                        onViewPDF(file);
+                        setMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700"
+                    >
+                      <Eye className="w-4 h-4" />
+                      View PDF
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        handleView();
+                        setMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700"
+                    >
+                      <Download className="w-4 h-4" />
+                      Download
+                    </button>
+                  )}
+
                   {/* Version control features - available to HOS, Exam Unit, and Owner */}
                   {canViewDetails && (
-                  <>
+                    <>
                       <button
                         onClick={() => {
                           setShowTimeline(true);
@@ -256,7 +256,7 @@ export default function FileCard({ file, isOwner, onDeleted, onSelect, isSelecte
                       </button>
                     </>
                   )}
-                  
+
                   {/* Owner-only features - hide Upload New Version when pending or approved */}
                   {canEdit && (
                     <>
@@ -272,24 +272,24 @@ export default function FileCard({ file, isOwner, onDeleted, onSelect, isSelecte
                           Upload New Version
                         </button>
                       )}
-                    <button
-                      onClick={() => {
-                        handleDelete();
-                        setMenuOpen(false);
-                      }}
-                      disabled={deleting}
+                      <button
+                        onClick={() => {
+                          handleDelete();
+                          setMenuOpen(false);
+                        }}
+                        disabled={deleting}
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      {deleting ? 'Deleting...' : 'Delete'}
-                    </button>
-                  </>
-                )}
-              </div>
-            </>
-          )}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        {deleting ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
-      </div>
 
         {/* Category and Status Badges - Enhanced */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -329,9 +329,8 @@ export default function FileCard({ file, isOwner, onDeleted, onSelect, isSelecte
 
         {/* Expiration Badge */}
         {file.expiresAt && daysLeft !== null && (
-          <div className={`inline-block ml-2 px-2 py-1 rounded text-xs font-medium mb-3 ${
-            expired ? 'bg-red-100' : daysLeft <= 3 ? 'bg-yellow-100' : 'bg-green-100'
-          }`}>
+          <div className={`inline-block ml-2 px-2 py-1 rounded text-xs font-medium mb-3 ${expired ? 'bg-red-100' : daysLeft <= 3 ? 'bg-yellow-100' : 'bg-green-100'
+            }`}>
             <Clock className="w-3 h-3 inline mr-1" />
             {expired ? 'EXPIRED' : `${daysLeft}d left`}
           </div>
@@ -367,7 +366,7 @@ export default function FileCard({ file, isOwner, onDeleted, onSelect, isSelecte
             <span className="text-gray-600 font-medium">Uploaded:</span>
             <span className="font-semibold text-gray-900">{file.createdAt ? formatDate(file.createdAt) : 'N/A'}</span>
           </div>
-          
+
           {/* Download Count - Quick Status */}
           <div className="flex items-center justify-between text-xs p-2 bg-gray-50 rounded-lg border border-gray-200">
             <span className="text-gray-600 font-medium">📥 Downloads:</span>
@@ -383,25 +382,25 @@ export default function FileCard({ file, isOwner, onDeleted, onSelect, isSelecte
           </div>
         </div>
 
-      {/* Actions */}
-      {/* Show View button for review pages (HOS/Exam Unit), Download button for others */}
-      {onViewPDF && (userRole === 'hos' || userRole === 'exam_unit') ? (
-        <button
-          onClick={() => onViewPDF(file)}
-          className="w-full px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
-        >
-          <Eye className="w-3 h-3" />
-          View PDF
-        </button>
-      ) : (
-        <button
-          onClick={handleView}
-          className="w-full px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
-        >
-          <Download className="w-3 h-3" />
-          Download
-        </button>
-      )}
+        {/* Actions */}
+        {/* Show View button for review pages (HOS/Exam Unit), Download button for others */}
+        {onViewPDF && (userRole === 'hos' || userRole === 'exam_unit') ? (
+          <button
+            onClick={() => onViewPDF(file)}
+            className="w-full px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+          >
+            <Eye className="w-3 h-3" />
+            View PDF
+          </button>
+        ) : (
+          <button
+            onClick={handleView}
+            className="w-full px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+          >
+            <Download className="w-3 h-3" />
+            Download
+          </button>
+        )}
 
         {/* DRAFT: Submit for Review. NEEDS_REVISION: Upload New Version (instead of Submit for Review) */}
         {isOwner && workflowStatus === 'DRAFT' && (
@@ -438,7 +437,7 @@ export default function FileCard({ file, isOwner, onDeleted, onSelect, isSelecte
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="p-4">
               {historyLoading ? (
                 <p className="text-center text-gray-600">Loading...</p>

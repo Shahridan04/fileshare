@@ -7,7 +7,7 @@ import { getCurrentUser } from '../services/authService';
 import { isValidFileType, isValidFileSize, formatFileSize, generateId } from '../utils/helpers';
 import { MAX_FILE_SIZE } from '../utils/constants';
 import Navbar from '../components/Navbar';
-import { Upload as UploadIcon, File, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Upload as UploadIcon, File, X, CheckCircle, AlertCircle, Loader2, Calendar } from 'lucide-react';
 
 const CATEGORIES = [
   { value: 'question-paper', label: '📄 Question Paper' },
@@ -30,6 +30,13 @@ export default function Upload() {
   const [assignedSubjects, setAssignedSubjects] = useState([]);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [submissionDeadline, setSubmissionDeadline] = useState('');
+
+  // Get minimum date (today)
+  const getMinDate = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -127,12 +134,14 @@ export default function Upload() {
 
       // Step 4: Save metadata to Firestore
       setProgress(80);
-      
+
       const metadata = {
         fileId,
         fileName: selectedFile.name,
         fileSize: selectedFile.size,
         fileType: selectedFile.type,
+        // Encryption key stored for authenticated review workflows (Firestore reads require auth).
+        // Share links use URL fragments (#key=) which are never sent to the server.
         encryptionKey: encryptionKey,
         downloadURL: downloadURL,
         encrypted: true,
@@ -141,7 +150,9 @@ export default function Upload() {
         createdByName: user.displayName || user.email,
         workflowStatus: 'DRAFT',
         version: 1,
-        versionDescription: 'Initial version'
+        versionDescription: 'Initial version',
+        submissionDeadline: submissionDeadline ? new Date(submissionDeadline) : null,
+        hasDeadline: !!submissionDeadline
       };
 
       // Add subject info if lecturer
@@ -153,13 +164,13 @@ export default function Upload() {
         metadata.departmentName = selectedSubject.deptName;
         metadata.courseId = selectedSubject.courseId;
       }
-      
+
       const savedFileId = await saveFileMetadata(user.uid, metadata);
 
       // Create initial version record
       await createFileVersion(savedFileId, {
         version: 1,
-        encryptionKey: encryptionKey,
+        encryptionKey: encryptionKey, // Protected by Firestore auth rules
         downloadURL: downloadURL,
         fileName: selectedFile.name,
         fileSize: selectedFile.size,
@@ -311,11 +322,10 @@ export default function Upload() {
                       <button
                         key={cat.value}
                         onClick={() => setSelectedCategory(cat.value)}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          selectedCategory === cat.value
-                            ? 'bg-blue-600 text-white border border-blue-600'
-                            : 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200'
-                        }`}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedCategory === cat.value
+                          ? 'bg-blue-600 text-white border border-blue-600'
+                          : 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200'
+                          }`}
                       >
                         {cat.label}
                       </button>
@@ -323,6 +333,28 @@ export default function Upload() {
                   </div>
                   <p className="text-xs text-gray-500 mt-2">
                     This helps organize your files in the dashboard
+                  </p>
+                </div>
+              )}
+
+              {/* Submission Deadline */}
+              {!uploading && !success && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      Submission Deadline (Optional)
+                    </div>
+                  </label>
+                  <input
+                    type="date"
+                    value={submissionDeadline}
+                    onChange={(e) => setSubmissionDeadline(e.target.value)}
+                    min={getMinDate()}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-2">
+                    Set a deadline to receive reminders before the due date
                   </p>
                 </div>
               )}

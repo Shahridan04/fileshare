@@ -65,7 +65,7 @@ export const sanitizeFilename = (filename) => {
  * Generate unique ID
  */
 export const generateId = () => {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+  return crypto.randomUUID();
 };
 
 /**
@@ -109,4 +109,47 @@ export const isValidEmail = (email) => {
 export const truncateText = (text, maxLength = 30) => {
   if (!text) return '';
   return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+};
+
+/**
+ * Format deadline date (date only, no time)
+ */
+export const formatDeadline = (timestamp) => {
+  if (!timestamp) return null;
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  }).format(date);
+};
+
+/**
+ * Get days until deadline
+ */
+export const getDaysUntilDeadline = (timestamp) => {
+  if (!timestamp) return null;
+  const deadline = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  deadline.setHours(0, 0, 0, 0);
+  const diffTime = deadline.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+};
+
+/**
+ * Check if deadline is soon (within 3 days)
+ */
+export const isDeadlineSoon = (timestamp) => {
+  const days = getDaysUntilDeadline(timestamp);
+  return days !== null && days >= 0 && days <= 3;
+};
+
+/**
+ * Check if deadline has passed
+ */
+export const isPastDeadline = (timestamp) => {
+  const days = getDaysUntilDeadline(timestamp);
+  return days !== null && days < 0;
 };

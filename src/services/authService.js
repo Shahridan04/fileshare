@@ -1,4 +1,4 @@
-import { 
+import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -12,33 +12,44 @@ import { auth, googleProvider, db } from '../firebase';
 
 /**
  * Register a new user with email and password
+ * @param {string} email - User email
+ * @param {string} password - User password
+ * @param {string} displayName - User display name
+ * @param {string} [requestedDepartment] - Optional department ID user wants to join
  */
-export const registerUser = async (email, password, displayName) => {
+export const registerUser = async (email, password, displayName, requestedDepartment = null) => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    
+
     // Update profile with display name
     await updateProfile(user, { displayName });
-    
+
     // Create user document in Firestore with 'pending' role
-    await setDoc(doc(db, 'users', user.uid), {
+    const userData = {
       uid: user.uid,
       email: user.email,
       displayName: displayName,
       role: 'pending', // New users start as pending
       createdAt: new Date(),
       photoURL: user.photoURL || null
-    });
-    
+    };
+
+    // Add requested department if provided
+    if (requestedDepartment) {
+      userData.requestedDepartment = requestedDepartment;
+    }
+
+    await setDoc(doc(db, 'users', user.uid), userData);
+
     // Notify Exam Unit about new user registration
     try {
       const firestoreService = await import('./firestoreService');
-      
+
       // Get all Exam Unit users
       const allUsers = await firestoreService.getAllUsers();
       const examUnitUsers = allUsers.filter(u => u.role === 'exam_unit');
-      
+
       // Notify each Exam Unit user
       for (const examUnitUser of examUnitUsers) {
         await firestoreService.createNotification({
@@ -53,7 +64,7 @@ export const registerUser = async (email, password, displayName) => {
       // Non-critical - log but don't fail registration
       console.warn('Failed to notify Exam Unit about new user:', notifError);
     }
-    
+
     return user;
   } catch (error) {
     console.error('Error registering user:', error);
@@ -81,7 +92,7 @@ export const loginWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;
-    
+
     // Check if user document exists, create if not
     const userDoc = await getDoc(doc(db, 'users', user.uid));
     if (!userDoc.exists()) {
@@ -93,15 +104,15 @@ export const loginWithGoogle = async () => {
         createdAt: new Date(),
         photoURL: user.photoURL
       });
-      
+
       // Notify Exam Unit about new user registration (Google signup)
       try {
         const firestoreService = await import('./firestoreService');
-        
+
         // Get all Exam Unit users
         const allUsers = await firestoreService.getAllUsers();
         const examUnitUsers = allUsers.filter(u => u.role === 'exam_unit');
-        
+
         // Notify each Exam Unit user
         for (const examUnitUser of examUnitUsers) {
           await firestoreService.createNotification({
@@ -117,7 +128,7 @@ export const loginWithGoogle = async () => {
         console.warn('Failed to notify Exam Unit about new user:', notifError);
       }
     }
-    
+
     return user;
   } catch (error) {
     console.error('Error logging in with Google:', error);

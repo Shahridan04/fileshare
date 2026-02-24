@@ -104,7 +104,34 @@ export async function decryptFile(encryptedData, base64Key) {
 }
 
 /**
- * Encrypt text data (for key encryption)
+ * Generate a cryptographically secure random salt
+ * @returns {Uint8Array} 16-byte salt
+ */
+export function generateSalt() {
+  return crypto.getRandomValues(new Uint8Array(16));
+}
+
+/**
+ * Convert salt to base64 for storage
+ * @param {Uint8Array} salt - Salt bytes
+ * @returns {string} Base64 encoded salt
+ */
+export function saltToBase64(salt) {
+  return btoa(String.fromCharCode(...salt));
+}
+
+/**
+ * Convert base64 salt back to Uint8Array
+ * @param {string} base64Salt - Base64 encoded salt
+ * @returns {Uint8Array} Salt bytes
+ */
+export function base64ToSalt(base64Salt) {
+  return Uint8Array.from(atob(base64Salt), c => c.charCodeAt(0));
+}
+
+/**
+ * Encrypt text data (for key encryption) - Legacy version with fixed salt
+ * @deprecated Use encryptTextWithSalt instead for better security
  * @param {string} text - Text to encrypt
  * @param {string} password - Password to derive key from
  * @returns {Promise<string>} Base64 encoded encrypted text
@@ -114,7 +141,7 @@ export async function encryptText(text, password) {
     const encoder = new TextEncoder();
     const data = encoder.encode(text);
     
-    // Derive key from password
+    // Derive key from password (using legacy fixed salt for backward compatibility)
     const passwordKey = await deriveKeyFromPassword(password);
     const iv = crypto.getRandomValues(new Uint8Array(ENCRYPTION_ALGORITHM.ivLength));
     
@@ -134,7 +161,39 @@ export async function encryptText(text, password) {
 }
 
 /**
- * Decrypt text data
+ * Encrypt text data with a unique salt (recommended)
+ * @param {string} text - Text to encrypt
+ * @param {string} password - Password to derive key from
+ * @param {Uint8Array} salt - Unique salt for this encryption
+ * @returns {Promise<string>} Base64 encoded encrypted text
+ */
+export async function encryptTextWithSalt(text, password, salt) {
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(text);
+    
+    // Derive key from password with unique salt
+    const passwordKey = await deriveKeyFromPassword(password, salt);
+    const iv = crypto.getRandomValues(new Uint8Array(ENCRYPTION_ALGORITHM.ivLength));
+    
+    const encrypted = await crypto.subtle.encrypt(
+      { name: ENCRYPTION_ALGORITHM.name, iv },
+      passwordKey,
+      data
+    );
+    
+    // Combine IV and encrypted data
+    const combined = new Uint8Array([...iv, ...new Uint8Array(encrypted)]);
+    return btoa(String.fromCharCode(...combined));
+  } catch (error) {
+    console.error('Error encrypting text:', error);
+    throw new Error('Failed to encrypt text');
+  }
+}
+
+/**
+ * Decrypt text data - Legacy version with fixed salt
+ * @deprecated Use decryptTextWithSalt instead for better security
  * @param {string} base64Encrypted - Base64 encoded encrypted text
  * @param {string} password - Password to derive key from
  * @returns {Promise<string>} Decrypted text
@@ -162,11 +221,41 @@ export async function decryptText(base64Encrypted, password) {
 }
 
 /**
+ * Decrypt text data with a unique salt (recommended)
+ * @param {string} base64Encrypted - Base64 encoded encrypted text
+ * @param {string} password - Password to derive key from
+ * @param {Uint8Array} salt - The same salt used during encryption
+ * @returns {Promise<string>} Decrypted text
+ */
+export async function decryptTextWithSalt(base64Encrypted, password, salt) {
+  try {
+    const combined = Uint8Array.from(atob(base64Encrypted), c => c.charCodeAt(0));
+    const iv = combined.slice(0, ENCRYPTION_ALGORITHM.ivLength);
+    const encrypted = combined.slice(ENCRYPTION_ALGORITHM.ivLength);
+    
+    const passwordKey = await deriveKeyFromPassword(password, salt);
+    
+    const decrypted = await crypto.subtle.decrypt(
+      { name: ENCRYPTION_ALGORITHM.name, iv },
+      passwordKey,
+      encrypted
+    );
+    
+    const decoder = new TextDecoder();
+    return decoder.decode(decrypted);
+  } catch (error) {
+    console.error('Error decrypting text:', error);
+    throw new Error('Failed to decrypt text');
+  }
+}
+
+/**
  * Derive encryption key from password using PBKDF2
  * @param {string} password - Password
+ * @param {Uint8Array} [salt] - Optional salt (uses legacy fixed salt if not provided)
  * @returns {Promise<CryptoKey>} Derived key
  */
-async function deriveKeyFromPassword(password) {
+async function deriveKeyFromPassword(password, salt = null) {
   const encoder = new TextEncoder();
   const passwordBuffer = encoder.encode(password);
   
@@ -178,13 +267,13 @@ async function deriveKeyFromPassword(password) {
     ["deriveBits", "deriveKey"]
   );
   
-  // Use a fixed salt for simplicity (in production, use unique salt per user)
-  const salt = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+  // Use provided salt or fall back to legacy fixed salt for backward compatibility
+  const actualSalt = salt || new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
   
   return await crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt: salt,
+      salt: actualSalt,
       iterations: 100000,
       hash: "SHA-256"
     },

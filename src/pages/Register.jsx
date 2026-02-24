@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { registerUser, loginWithGoogle } from '../services/authService';
-import { Lock, Mail, User, Chrome, AlertCircle, CheckCircle } from 'lucide-react';
+import { getDepartments } from '../services/firestoreService';
+import { Lock, Mail, User, Chrome, AlertCircle, CheckCircle, Building2, Loader2 } from 'lucide-react';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -9,10 +10,28 @@ export default function Register() {
     displayName: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    requestedDepartment: ''
   });
+  const [departments, setDepartments] = useState([]);
+  const [loadingDepts, setLoadingDepts] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadDepartments();
+  }, []);
+
+  const loadDepartments = async () => {
+    try {
+      const depts = await getDepartments();
+      setDepartments(depts);
+    } catch (err) {
+      console.error('Error loading departments:', err);
+    } finally {
+      setLoadingDepts(false);
+    }
+  };
 
   const handleChange = (e) => {
     setFormData({
@@ -23,8 +42,20 @@ export default function Register() {
   };
 
   const validateForm = () => {
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (formData.password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return false;
+    }
+    if (!/[A-Z]/.test(formData.password)) {
+      setError('Password must contain at least one uppercase letter');
+      return false;
+    }
+    if (!/[0-9]/.test(formData.password)) {
+      setError('Password must contain at least one number');
+      return false;
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(formData.password)) {
+      setError('Password must contain at least one special character');
       return false;
     }
     if (formData.password !== formData.confirmPassword) {
@@ -43,7 +74,12 @@ export default function Register() {
     setLoading(true);
 
     try {
-      await registerUser(formData.email, formData.password, formData.displayName);
+      await registerUser(
+        formData.email,
+        formData.password,
+        formData.displayName,
+        formData.requestedDepartment
+      );
       navigate('/dashboard');
     } catch (err) {
       setError(err.message);
@@ -138,6 +174,40 @@ export default function Register() {
                   placeholder="you@example.com"
                 />
               </div>
+            </div>
+
+            {/* Department Selection */}
+            <div>
+              <label htmlFor="requestedDepartment" className="block text-sm font-medium text-gray-700 mb-1">
+                Department <span className="text-gray-500">(Optional)</span>
+              </label>
+              <div className="relative">
+                <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                {loadingDepts ? (
+                  <div className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg bg-gray-50 flex items-center">
+                    <Loader2 className="w-4 h-4 animate-spin text-gray-400 mr-2" />
+                    <span className="text-gray-500">Loading departments...</span>
+                  </div>
+                ) : (
+                  <select
+                    id="requestedDepartment"
+                    name="requestedDepartment"
+                    value={formData.requestedDepartment}
+                    onChange={handleChange}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
+                  >
+                    <option value="">Select your department...</option>
+                    {departments.map(dept => (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.name} ({dept.code})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                This helps assign you to the correct department faster
+              </p>
             </div>
 
             {/* Password */}

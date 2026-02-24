@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser } from '../services/authService';
-import { 
-  getUserRole, 
+import {
+  getUserRole,
   getExamUnitReviewFiles,
   getExamUnitAllFiles,
-  examUnitApproveFile, 
+  examUnitApproveFile,
   examUnitRejectFile,
   getFileFeedback,
   getDepartments,
@@ -14,9 +14,10 @@ import {
 import Navbar from '../components/Navbar';
 import ReviewFileCard from '../components/ReviewFileCard';
 import PDFViewer from '../components/PDFViewer';
-import { 
-  CheckCircle, 
-  XCircle, 
+import FeedbackFileInput from '../components/FeedbackFileInput';
+import {
+  CheckCircle,
+  XCircle,
   FileText,
   MessageSquare,
   AlertCircle,
@@ -57,6 +58,7 @@ export default function ExamUnitReview() {
     departments: 0
   });
   const [selectedFileForView, setSelectedFileForView] = useState(null);
+  const [feedbackAttachment, setFeedbackAttachment] = useState(null);
 
   useEffect(() => {
     checkAccessAndLoad();
@@ -141,7 +143,7 @@ export default function ExamUnitReview() {
     setSelectedFile(file);
     setReviewAction(action);
     setComments('');
-    
+
     // Load existing feedback
     try {
       const fileFeedback = await getFileFeedback(file.id);
@@ -149,7 +151,7 @@ export default function ExamUnitReview() {
     } catch (err) {
       console.error('Error loading feedback:', err);
     }
-    
+
     setShowReviewModal(true);
   };
 
@@ -157,7 +159,7 @@ export default function ExamUnitReview() {
     if (!selectedFile) return;
 
     const user = getCurrentUser();
-    
+
     try {
       setSubmitting(true);
       setError('');
@@ -178,7 +180,7 @@ export default function ExamUnitReview() {
       setSelectedFile(null);
       setComments('');
       await loadData();
-      
+
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error submitting review:', err);
@@ -209,9 +211,9 @@ export default function ExamUnitReview() {
   // Filter files by search query
   const filterFiles = (filesList) => {
     if (!searchQuery.trim()) return filesList;
-    
+
     const query = searchQuery.toLowerCase();
-    return filesList.filter(file => 
+    return filesList.filter(file =>
       file.fileName?.toLowerCase().includes(query) ||
       file.subjectCode?.toLowerCase().includes(query) ||
       file.subjectName?.toLowerCase().includes(query) ||
@@ -359,11 +361,10 @@ export default function ExamUnitReview() {
           <div className="flex border-b border-gray-200">
             <button
               onClick={() => setActiveTab('pending')}
-              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'pending'
+              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'pending'
                   ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <Clock className="w-5 h-5" />
               Pending Review
@@ -375,11 +376,10 @@ export default function ExamUnitReview() {
             </button>
             <button
               onClick={() => setActiveTab('revision')}
-              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'revision'
+              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'revision'
                   ? 'text-red-600 border-b-2 border-red-600 bg-red-50'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <XCircle className="w-5 h-5" />
               Needs Revision
@@ -391,11 +391,10 @@ export default function ExamUnitReview() {
             </button>
             <button
               onClick={() => setActiveTab('approved')}
-              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'approved'
+              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'approved'
                   ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <CheckCircle className="w-5 h-5" />
               Approved Files
@@ -441,14 +440,14 @@ export default function ExamUnitReview() {
               {activeTab === 'revision' && <XCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />}
               {activeTab === 'approved' && <CheckCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />}
               <p className="text-gray-600 mb-2">
-                {searchQuery ? 'No files match your search' : 
+                {searchQuery ? 'No files match your search' :
                   activeTab === 'pending' ? 'No files pending final review' :
-                  activeTab === 'revision' ? 'No files needing revision' : 'No approved files yet'}
+                    activeTab === 'revision' ? 'No files needing revision' : 'No approved files yet'}
               </p>
               <p className="text-sm text-gray-500">
-                {searchQuery ? 'Try adjusting your search query' : 
+                {searchQuery ? 'Try adjusting your search query' :
                   activeTab === 'pending' ? 'HOS-approved files will appear here' :
-                  activeTab === 'revision' ? 'Files you requested revision for will appear here' : 'Approved files will appear here'}
+                    activeTab === 'revision' ? 'Files you requested revision for will appear here' : 'Approved files will appear here'}
               </p>
             </div>
           ) : (
@@ -543,9 +542,8 @@ export default function ExamUnitReview() {
                           <span className="text-gray-500">•</span>
                           <span className="text-gray-500 capitalize">{fb.reviewerRole}</span>
                           <span className="text-gray-500">•</span>
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            fb.action === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded text-xs ${fb.action === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                            }`}>
                             {fb.action}
                           </span>
                         </div>
@@ -567,11 +565,19 @@ export default function ExamUnitReview() {
                   rows={4}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder={
-                    reviewAction === 'approve' 
+                    reviewAction === 'approve'
                       ? 'Add final notes or printing instructions...'
                       : 'Please explain what needs to be revised...'
                   }
                   required={reviewAction === 'reject'}
+                />
+              </div>
+
+              {/* Feedback File Attachment */}
+              <div className="mb-6">
+                <FeedbackFileInput
+                  onFileChange={setFeedbackAttachment}
+                  disabled={submitting}
                 />
               </div>
 
@@ -580,11 +586,10 @@ export default function ExamUnitReview() {
                 <button
                   onClick={handleSubmitReview}
                   disabled={submitting || (reviewAction === 'reject' && !comments.trim())}
-                  className={`flex-1 py-3 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                    reviewAction === 'approve' 
-                      ? 'bg-green-600 hover:bg-green-700' 
+                  className={`flex-1 py-3 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${reviewAction === 'approve'
+                      ? 'bg-green-600 hover:bg-green-700'
                       : 'bg-orange-600 hover:bg-orange-700'
-                  }`}
+                    }`}
                 >
                   {submitting ? 'Submitting...' : reviewAction === 'approve' ? '✓ Final Approval' : 'Request Revision'}
                 </button>

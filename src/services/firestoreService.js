@@ -1,12 +1,12 @@
-import { 
-  collection, 
-  doc, 
-  addDoc, 
-  getDoc, 
-  getDocs, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
+import {
+  collection,
+  doc,
+  addDoc,
+  getDoc,
+  getDocs,
+  updateDoc,
+  deleteDoc,
+  query,
   where,
   orderBy,
   serverTimestamp,
@@ -32,7 +32,7 @@ export const saveFileMetadata = async (userId, fileData) => {
       expiresAt: fileData.expiresAt || null,
       downloadHistory: []
     });
-    
+
     return docRef.id;
   } catch (error) {
     console.error('Error saving file metadata:', error);
@@ -47,7 +47,7 @@ export const getFileMetadata = async (fileId) => {
   try {
     const docRef = doc(db, 'files', fileId);
     const docSnap = await getDoc(docRef);
-    
+
     if (docSnap.exists()) {
       return { id: docSnap.id, ...docSnap.data() };
     } else {
@@ -66,18 +66,18 @@ export const getUserFiles = async (userId) => {
   try {
     const filesRef = collection(db, 'files');
     const q = query(
-      filesRef, 
+      filesRef,
       where('ownerId', '==', userId),
       orderBy('createdAt', 'desc')
     );
-    
+
     const querySnapshot = await getDocs(q);
     const files = [];
-    
+
     querySnapshot.forEach((doc) => {
       files.push({ id: doc.id, ...doc.data() });
     });
-    
+
     return files;
   } catch (error) {
     console.error('Error getting user files:', error);
@@ -92,18 +92,64 @@ export const getAllFiles = async () => {
   try {
     const filesRef = collection(db, 'files');
     const q = query(filesRef, orderBy('createdAt', 'desc'));
-    
+
     const querySnapshot = await getDocs(q);
     const files = [];
-    
+
     querySnapshot.forEach((doc) => {
       files.push({ id: doc.id, ...doc.data() });
     });
-    
+
     return files;
   } catch (error) {
     console.error('Error getting all files:', error);
     throw new Error('Failed to get all files');
+  }
+};
+
+/**
+ * Get files with upcoming deadlines (within specified days)
+ * Used for showing deadline reminders
+ */
+export const getFilesWithUpcomingDeadlines = async (userId, withinDays = 7) => {
+  try {
+    const filesRef = collection(db, 'files');
+    const q = query(
+      filesRef,
+      where('ownerId', '==', userId),
+      where('hasDeadline', '==', true)
+    );
+
+    const querySnapshot = await getDocs(q);
+    const files = [];
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data.submissionDeadline) {
+        const deadline = data.submissionDeadline.toDate ? data.submissionDeadline.toDate() : new Date(data.submissionDeadline);
+        const diffTime = deadline.getTime() - now.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        // Include files with deadlines within the specified range (including past deadlines up to -7 days)
+        if (diffDays >= -7 && diffDays <= withinDays) {
+          files.push({
+            id: doc.id,
+            ...data,
+            daysUntilDeadline: diffDays
+          });
+        }
+      }
+    });
+
+    // Sort by deadline (closest first)
+    files.sort((a, b) => a.daysUntilDeadline - b.daysUntilDeadline);
+
+    return files;
+  } catch (error) {
+    console.error('Error getting files with deadlines:', error);
+    throw new Error('Failed to get files with deadlines');
   }
 };
 
@@ -131,29 +177,29 @@ export const recordDownload = async (fileId, userEmail) => {
     console.log('recordDownload called:', { fileId, userEmail });
     const docRef = doc(db, 'files', fileId);
     const docSnap = await getDoc(docRef);
-    
+
     if (docSnap.exists()) {
       const currentHistory = docSnap.data().downloadHistory || [];
       console.log('Current download history:', currentHistory);
-      
+
       // Add to history (use ISO string instead of serverTimestamp in array)
       const newEntry = {
         email: userEmail,
         timestamp: new Date().toISOString()
       };
-      
+
       const newHistory = [...currentHistory, newEntry];
-      
+
       console.log('New download history entry:', newEntry);
-      
+
       // Keep only last 100 downloads
       const trimmedHistory = newHistory.slice(-100);
-      
+
       await updateDoc(docRef, {
         downloadHistory: trimmedHistory,
         lastDownloaded: serverTimestamp()
       });
-      
+
       console.log('Download recorded successfully. Total entries:', trimmedHistory.length);
     } else {
       console.error('File document not found:', fileId);
@@ -171,7 +217,7 @@ export const getDownloadHistory = async (fileId) => {
   try {
     const docRef = doc(db, 'files', fileId);
     const docSnap = await getDoc(docRef);
-    
+
     if (docSnap.exists()) {
       return docSnap.data().downloadHistory || [];
     }
@@ -203,7 +249,7 @@ export const setFileExpiration = async (fileId, expirationDate) => {
  */
 export const isFileExpired = (file) => {
   if (!file.expiresAt) return false;
-  
+
   const expirationTime = file.expiresAt.toMillis?.() || new Date(file.expiresAt).getTime();
   return Date.now() > expirationTime;
 };
@@ -213,11 +259,11 @@ export const isFileExpired = (file) => {
  */
 export const daysUntilExpiration = (file) => {
   if (!file.expiresAt) return null;
-  
+
   const expirationTime = file.expiresAt.toMillis?.() || new Date(file.expiresAt).getTime();
   const now = Date.now();
   const daysLeft = Math.ceil((expirationTime - now) / (1000 * 60 * 60 * 24));
-  
+
   return daysLeft > 0 ? daysLeft : 0;
 };
 
@@ -242,18 +288,18 @@ export const incrementDownloads = async (fileId, userEmail = 'anonymous') => {
     console.log('incrementDownloads called:', { fileId, userEmail });
     const docRef = doc(db, 'files', fileId);
     const docSnap = await getDoc(docRef);
-    
+
     if (docSnap.exists()) {
       const currentDownloads = docSnap.data().downloads || 0;
       console.log('Current downloads:', currentDownloads);
-      
+
       await updateDoc(docRef, {
         downloads: currentDownloads + 1,
         lastDownloaded: serverTimestamp()
       });
-      
+
       console.log('Download count incremented to:', currentDownloads + 1);
-      
+
       // Also record in history
       await recordDownload(fileId, userEmail);
     } else {
@@ -272,7 +318,7 @@ export const getUserProfile = async (userId) => {
   try {
     const docRef = doc(db, 'users', userId);
     const docSnap = await getDoc(docRef);
-    
+
     if (docSnap.exists()) {
       return docSnap.data();
     } else {
@@ -324,13 +370,13 @@ export const updateUserRole = async (userId, role, additionalData = {}) => {
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);
     const oldRole = userSnap.exists() ? userSnap.data().role : null;
-    
+
     await updateDoc(userRef, {
       role,
       ...additionalData,
       updatedAt: serverTimestamp()
     });
-    
+
     // If user was approved (changed from 'pending' to another role), notify them
     if (oldRole === 'pending' && role !== 'pending' && role !== 'rejected') {
       try {
@@ -378,7 +424,7 @@ export const deleteUser = async (userId) => {
     // Delete user document from Firestore
     const userRef = doc(db, 'users', userId);
     await deleteDoc(userRef);
-    
+
     // Note: To delete from Firebase Auth, you need Firebase Admin SDK on backend
     // For now, this only removes Firestore data
     console.log(`User ${userId} data deleted from Firestore. Auth account still exists.`);
@@ -407,6 +453,105 @@ export const getAllUsers = async () => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (error) {
     console.error('Error getting all users:', error);
+    throw error;
+  }
+};
+
+// ==================== HOS USER MANAGEMENT ====================
+
+/**
+ * Get pending users who requested a specific department
+ * Used by HOS to see users waiting for approval in their department
+ */
+export const getPendingUsersForDepartment = async (departmentId) => {
+  try {
+    const usersRef = collection(db, 'users');
+    const q = query(
+      usersRef,
+      where('role', '==', 'pending'),
+      where('requestedDepartment', '==', departmentId)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error getting pending users for department:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all lecturers in a specific department
+ */
+export const getDepartmentLecturers = async (departmentId) => {
+  try {
+    const usersRef = collection(db, 'users');
+    const q = query(
+      usersRef,
+      where('role', '==', 'lecturer'),
+      where('department', '==', departmentId)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error getting department lecturers:', error);
+    throw error;
+  }
+};
+
+/**
+ * HOS approves a pending user as lecturer in their department
+ */
+export const hosApproveUser = async (userId, departmentId, approvedBy) => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, {
+      role: 'lecturer',
+      department: departmentId,
+      approvedBy: approvedBy,
+      approvedAt: serverTimestamp(),
+      requestedDepartment: null, // Clear the request
+      updatedAt: serverTimestamp()
+    });
+
+    // Notify the user
+    await createNotification({
+      userId: userId,
+      type: 'role_assigned',
+      title: 'Account Approved!',
+      message: 'Your account has been approved as LECTURER. You can now upload exam papers.',
+      actionUrl: '/dashboard'
+    });
+  } catch (error) {
+    console.error('Error in HOS approve user:', error);
+    throw error;
+  }
+};
+
+/**
+ * HOS rejects a pending user
+ */
+export const hosRejectUser = async (userId, rejectedBy, reason = '') => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, {
+      role: 'rejected',
+      rejectedBy: rejectedBy,
+      rejectedAt: serverTimestamp(),
+      rejectionReason: reason,
+      requestedDepartment: null,
+      updatedAt: serverTimestamp()
+    });
+
+    // Notify the user
+    await createNotification({
+      userId: userId,
+      type: 'account_rejected',
+      title: 'Account Not Approved',
+      message: reason || 'Your account request was not approved. Please contact administration.',
+      actionUrl: null
+    });
+  } catch (error) {
+    console.error('Error in HOS reject user:', error);
     throw error;
   }
 };
@@ -472,33 +617,33 @@ export const deleteDepartment = async (deptId) => {
     // First, clean up all user assignments related to this department
     const usersRef = collection(db, 'users');
     const usersSnapshot = await getDocs(usersRef);
-    
+
     const updatePromises = [];
-    
+
     usersSnapshot.forEach((userDoc) => {
       const userData = userDoc.data();
       const updates = {};
       let needsUpdate = false;
-      
+
       // Clear department field if it matches the deleted department
       if (userData.department === deptId) {
         updates.department = null;
         needsUpdate = true;
       }
-      
+
       // Remove assigned subjects from this department (for lecturers)
       if (userData.assignedSubjects && Array.isArray(userData.assignedSubjects)) {
         const filteredSubjects = userData.assignedSubjects.filter(
           subject => subject.deptId !== deptId
         );
-        
+
         // Only update if subjects were removed
         if (filteredSubjects.length !== userData.assignedSubjects.length) {
           updates.assignedSubjects = filteredSubjects;
           needsUpdate = true;
         }
       }
-      
+
       // Update user if any changes needed
       if (needsUpdate) {
         updates.updatedAt = serverTimestamp();
@@ -506,14 +651,14 @@ export const deleteDepartment = async (deptId) => {
         updatePromises.push(updateDoc(userRef, updates));
       }
     });
-    
+
     // Wait for all user updates to complete
     await Promise.all(updatePromises);
-    
+
     // Now delete the department
     const deptRef = doc(db, 'departments', deptId);
     await deleteDoc(deptRef);
-    
+
     console.log(`Department ${deptId} deleted. Cleaned up ${updatePromises.length} user assignments.`);
   } catch (error) {
     console.error('Error deleting department:', error);
@@ -529,7 +674,7 @@ export const assignHOSToDepartment = async (deptId, hosId, hosName) => {
       hosName,
       updatedAt: serverTimestamp()
     });
-    
+
     // Update user's department
     const userRef = doc(db, 'users', hosId);
     await updateDoc(userRef, {
@@ -548,11 +693,11 @@ export const addCourseToDepartment = async (deptId, courseData) => {
   try {
     const deptRef = doc(db, 'departments', deptId);
     const deptSnap = await getDoc(deptRef);
-    
+
     if (!deptSnap.exists()) {
       throw new Error('Department not found');
     }
-    
+
     const courses = deptSnap.data().courses || [];
     const newCourse = {
       courseId: `course_${Date.now()}`,
@@ -560,14 +705,14 @@ export const addCourseToDepartment = async (deptId, courseData) => {
       subjects: [],
       createdAt: new Date().toISOString()
     };
-    
+
     courses.push(newCourse);
-    
+
     await updateDoc(deptRef, {
       courses,
       updatedAt: serverTimestamp()
     });
-    
+
     return newCourse.courseId;
   } catch (error) {
     console.error('Error adding course:', error);
@@ -579,24 +724,24 @@ export const updateCourse = async (deptId, courseId, updates) => {
   try {
     const deptRef = doc(db, 'departments', deptId);
     const deptSnap = await getDoc(deptRef);
-    
+
     if (!deptSnap.exists()) {
       throw new Error('Department not found');
     }
-    
+
     const courses = deptSnap.data().courses || [];
     const courseIndex = courses.findIndex(c => c.courseId === courseId);
-    
+
     if (courseIndex === -1) {
       throw new Error('Course not found');
     }
-    
+
     courses[courseIndex] = {
       ...courses[courseIndex],
       ...updates,
       updatedAt: new Date().toISOString()
     };
-    
+
     await updateDoc(deptRef, {
       courses,
       updatedAt: serverTimestamp()
@@ -611,13 +756,13 @@ export const deleteCourse = async (deptId, courseId) => {
   try {
     const deptRef = doc(db, 'departments', deptId);
     const deptSnap = await getDoc(deptRef);
-    
+
     if (!deptSnap.exists()) {
       throw new Error('Department not found');
     }
-    
+
     const courses = deptSnap.data().courses.filter(c => c.courseId !== courseId);
-    
+
     await updateDoc(deptRef, {
       courses,
       updatedAt: serverTimestamp()
@@ -634,18 +779,18 @@ export const addSubjectToCourse = async (deptId, courseId, subjectData) => {
   try {
     const deptRef = doc(db, 'departments', deptId);
     const deptSnap = await getDoc(deptRef);
-    
+
     if (!deptSnap.exists()) {
       throw new Error('Department not found');
     }
-    
+
     const courses = deptSnap.data().courses || [];
     const courseIndex = courses.findIndex(c => c.courseId === courseId);
-    
+
     if (courseIndex === -1) {
       throw new Error('Course not found');
     }
-    
+
     const newSubject = {
       subjectId: `subject_${Date.now()}`,
       ...subjectData,
@@ -653,15 +798,15 @@ export const addSubjectToCourse = async (deptId, courseId, subjectData) => {
       assignedLecturerName: null,
       createdAt: new Date().toISOString()
     };
-    
+
     courses[courseIndex].subjects = courses[courseIndex].subjects || [];
     courses[courseIndex].subjects.push(newSubject);
-    
+
     await updateDoc(deptRef, {
       courses,
       updatedAt: serverTimestamp()
     });
-    
+
     return newSubject.subjectId;
   } catch (error) {
     console.error('Error adding subject:', error);
@@ -673,32 +818,32 @@ export const assignLecturerToSubject = async (deptId, courseId, subjectId, lectu
   try {
     const deptRef = doc(db, 'departments', deptId);
     const deptSnap = await getDoc(deptRef);
-    
+
     if (!deptSnap.exists()) {
       throw new Error('Department not found');
     }
-    
+
     const courses = deptSnap.data().courses || [];
     const courseIndex = courses.findIndex(c => c.courseId === courseId);
-    
+
     if (courseIndex === -1) {
       throw new Error('Course not found');
     }
-    
+
     const subjectIndex = courses[courseIndex].subjects.findIndex(s => s.subjectId === subjectId);
-    
+
     if (subjectIndex === -1) {
       throw new Error('Subject not found');
     }
-    
+
     courses[courseIndex].subjects[subjectIndex].assignedLecturerId = lecturerId;
     courses[courseIndex].subjects[subjectIndex].assignedLecturerName = lecturerName;
-    
+
     await updateDoc(deptRef, {
       courses,
       updatedAt: serverTimestamp()
     });
-    
+
     // Update lecturer's assigned subjects
     const userRef = doc(db, 'users', lecturerId);
     await updateDoc(userRef, {
@@ -723,33 +868,33 @@ export const unassignLecturerFromSubject = async (deptId, courseId, subjectId, l
   try {
     const deptRef = doc(db, 'departments', deptId);
     const deptSnap = await getDoc(deptRef);
-    
+
     if (!deptSnap.exists()) {
       throw new Error('Department not found');
     }
-    
+
     const courses = deptSnap.data().courses || [];
     const courseIndex = courses.findIndex(c => c.courseId === courseId);
-    
+
     if (courseIndex === -1) {
       throw new Error('Course not found');
     }
-    
+
     const subjectIndex = courses[courseIndex].subjects.findIndex(s => s.subjectId === subjectId);
-    
+
     if (subjectIndex === -1) {
       throw new Error('Subject not found');
     }
-    
+
     const subject = courses[courseIndex].subjects[subjectIndex];
     courses[courseIndex].subjects[subjectIndex].assignedLecturerId = null;
     courses[courseIndex].subjects[subjectIndex].assignedLecturerName = null;
-    
+
     await updateDoc(deptRef, {
       courses,
       updatedAt: serverTimestamp()
     });
-    
+
     // Update lecturer's assigned subjects
     if (lecturerId) {
       const userRef = doc(db, 'users', lecturerId);
@@ -773,40 +918,40 @@ export const updateSubject = async (deptId, courseId, subjectId, updates) => {
   try {
     const deptRef = doc(db, 'departments', deptId);
     const deptSnap = await getDoc(deptRef);
-    
+
     if (!deptSnap.exists()) {
       throw new Error('Department not found');
     }
-    
+
     const courses = deptSnap.data().courses || [];
     const courseIndex = courses.findIndex(c => c.courseId === courseId);
-    
+
     if (courseIndex === -1) {
       throw new Error('Course not found');
     }
-    
+
     const subjectIndex = courses[courseIndex].subjects.findIndex(s => s.subjectId === subjectId);
-    
+
     if (subjectIndex === -1) {
       throw new Error('Subject not found');
     }
-    
+
     // Update subject fields
     courses[courseIndex].subjects[subjectIndex] = {
       ...courses[courseIndex].subjects[subjectIndex],
       ...updates
     };
-    
+
     await updateDoc(deptRef, {
       courses,
       updatedAt: serverTimestamp()
     });
-    
+
     // If subject name or code changed, update lecturer's assigned subjects
     if (updates.subjectName || updates.subjectCode) {
       const usersRef = collection(db, 'users');
       const usersSnapshot = await getDocs(usersRef);
-      
+
       const updatePromises = [];
       usersSnapshot.forEach((userDoc) => {
         const userData = userDoc.data();
@@ -821,7 +966,7 @@ export const updateSubject = async (deptId, courseId, subjectId, updates) => {
             }
             return subject;
           });
-          
+
           // Check if any subject was updated
           const hasChanges = JSON.stringify(updatedSubjects) !== JSON.stringify(userData.assignedSubjects);
           if (hasChanges) {
@@ -833,7 +978,7 @@ export const updateSubject = async (deptId, courseId, subjectId, updates) => {
           }
         }
       });
-      
+
       await Promise.all(updatePromises);
     }
   } catch (error) {
@@ -846,20 +991,20 @@ export const deleteSubject = async (deptId, courseId, subjectId) => {
   try {
     const deptRef = doc(db, 'departments', deptId);
     const deptSnap = await getDoc(deptRef);
-    
+
     if (!deptSnap.exists()) {
       throw new Error('Department not found');
     }
-    
+
     const courses = deptSnap.data().courses || [];
     const courseIndex = courses.findIndex(c => c.courseId === courseId);
-    
+
     if (courseIndex === -1) {
       throw new Error('Course not found');
     }
-    
+
     courses[courseIndex].subjects = courses[courseIndex].subjects.filter(s => s.subjectId !== subjectId);
-    
+
     await updateDoc(deptRef, {
       courses,
       updatedAt: serverTimestamp()
@@ -930,11 +1075,25 @@ export const getLatestFileVersion = async (fileId) => {
 
 // ==================== FEEDBACK MANAGEMENT ====================
 
+/**
+ * Create feedback with optional file attachment
+ * @param {Object} feedbackData - Feedback data including:
+ *   - fileId: The file being reviewed
+ *   - reviewerId: User providing feedback 
+ *   - reviewerName: Display name of reviewer
+ *   - reviewerRole: Role of reviewer (hos/exam_unit)
+ *   - comments: Text comments
+ *   - action: 'approved' or 'rejected'
+ *   - attachmentFileName: Optional attached file name
+ *   - attachmentURL: Optional attached file URL
+ *   - attachmentSize: Optional attached file size
+ */
 export const createFeedback = async (feedbackData) => {
   try {
     const feedbackRef = collection(db, 'feedback');
     const docRef = await addDoc(feedbackRef, {
       ...feedbackData,
+      hasAttachment: !!(feedbackData.attachmentURL),
       status: 'pending',
       createdAt: serverTimestamp()
     });
@@ -981,21 +1140,21 @@ export const createNotification = async (notificationData) => {
       emailSent: false,
       createdAt: serverTimestamp()
     });
-    
+
     // Trigger email notification (non-blocking)
     // The Cloud Function will handle email sending automatically when deployed
     // For development, we can also call email service directly
     try {
       const { sendEmailNotification, generateEmailTemplate, generateTextEmail } = await import('./emailService');
-      
+
       // Get user data for email
       const userDocRef = doc(db, 'users', notificationData.userId);
       const userDocSnap = await getDoc(userDocRef);
-      
+
       if (userDocSnap.exists()) {
         const userData = userDocSnap.data();
         const userEmail = userData.email || userData.userEmail;
-        
+
         // Check if user has email notifications enabled (default: true)
         if (userEmail && userData.emailNotificationsEnabled !== false) {
           const htmlBody = generateEmailTemplate(
@@ -1007,7 +1166,7 @@ export const createNotification = async (notificationData) => {
             { ...notificationData, createdAt: new Date() },
             userData.displayName || userData.name
           );
-          
+
           // Send email (non-blocking - don't wait for it)
           sendEmailNotification({
             to: userEmail,
@@ -1023,7 +1182,7 @@ export const createNotification = async (notificationData) => {
       // Email sending is non-critical, log but don't fail notification creation
       console.warn('Email notification failed (non-critical):', emailError);
     }
-    
+
     return docRef.id;
   } catch (error) {
     console.error('Error creating notification:', error);
@@ -1061,14 +1220,14 @@ export const markAllNotificationsAsRead = async (userId) => {
     const notificationRef = collection(db, 'notifications');
     const q = query(notificationRef, where('userId', '==', userId), where('read', '==', false));
     const snapshot = await getDocs(q);
-    
-    const updates = snapshot.docs.map(doc => 
+
+    const updates = snapshot.docs.map(doc =>
       updateDoc(doc.ref, {
         read: true,
         readAt: serverTimestamp()
       })
     );
-    
+
     await Promise.all(updates);
   } catch (error) {
     console.error('Error marking all notifications as read:', error);
@@ -1110,10 +1269,10 @@ export const clearAllNotifications = async (userId) => {
     const notificationRef = collection(db, 'notifications');
     const q = query(notificationRef, where('userId', '==', userId));
     const snapshot = await getDocs(q);
-    
+
     const deletes = snapshot.docs.map(doc => deleteDoc(doc.ref));
     await Promise.all(deletes);
-    
+
     console.log(`✅ Cleared ${snapshot.size} notifications`);
     return snapshot.size;
   } catch (error) {
@@ -1130,10 +1289,10 @@ export const clearReadNotifications = async (userId) => {
     const notificationRef = collection(db, 'notifications');
     const q = query(notificationRef, where('userId', '==', userId), where('read', '==', true));
     const snapshot = await getDocs(q);
-    
+
     const deletes = snapshot.docs.map(doc => deleteDoc(doc.ref));
     await Promise.all(deletes);
-    
+
     console.log(`✅ Cleared ${snapshot.size} read notifications`);
     return snapshot.size;
   } catch (error) {
@@ -1163,7 +1322,7 @@ export const submitFileForReview = async (fileId, userId, userName) => {
     if (fileSnap.exists() && fileSnap.data().departmentId) {
       const deptId = fileSnap.data().departmentId;
       const dept = await getDepartmentById(deptId);
-      
+
       if (dept && dept.hosId) {
         // Create notification for HOS
         await createNotification({
@@ -1201,7 +1360,7 @@ export const hosApproveFile = async (fileId, hosId, hosName, comments = '') => {
     const fileSnap = await getDoc(fileRef);
     if (fileSnap.exists()) {
       const fileData = fileSnap.data();
-      
+
       // Notify file owner
       await createNotification({
         userId: fileData.createdBy,
@@ -1246,7 +1405,7 @@ export const hosRejectFile = async (fileId, hosId, hosName, reason) => {
     const fileSnap = await getDoc(fileRef);
     if (fileSnap.exists()) {
       const fileData = fileSnap.data();
-      
+
       // Notify file owner
       await createNotification({
         userId: fileData.createdBy,
@@ -1292,7 +1451,7 @@ export const examUnitApproveFile = async (fileId, examUnitId, examUnitName, comm
     const fileSnap = await getDoc(fileRef);
     if (fileSnap.exists()) {
       const fileData = fileSnap.data();
-      
+
       // Notify file owner
       await createNotification({
         userId: fileData.createdBy,
@@ -1352,7 +1511,7 @@ export const examUnitRejectFile = async (fileId, examUnitId, examUnitName, reaso
     const fileSnap = await getDoc(fileRef);
     if (fileSnap.exists()) {
       const fileData = fileSnap.data();
-      
+
       // Notify file owner
       await createNotification({
         userId: fileData.createdBy,
@@ -1386,14 +1545,14 @@ export const uploadNewFileVersion = async (fileId, versionData) => {
   try {
     const fileRef = doc(db, 'files', fileId);
     const fileSnap = await getDoc(fileRef);
-    
+
     if (!fileSnap.exists()) {
       throw new Error('File not found');
     }
-    
+
     const currentVersion = fileSnap.data().version || 1;
     const newVersion = currentVersion + 1;
-    
+
     // Update file metadata
     await updateDoc(fileRef, {
       version: newVersion,
@@ -1405,7 +1564,7 @@ export const uploadNewFileVersion = async (fileId, versionData) => {
       versionDescription: versionData.description,
       updatedAt: serverTimestamp()
     });
-    
+
     // Create version record
     await createFileVersion(fileId, {
       version: newVersion,
@@ -1417,7 +1576,7 @@ export const uploadNewFileVersion = async (fileId, versionData) => {
       uploadedByName: versionData.uploadedByName,
       description: versionData.description
     });
-    
+
     return newVersion;
   } catch (error) {
     console.error('Error uploading new version:', error);
@@ -1446,11 +1605,11 @@ export const getDepartmentFiles = async (departmentId) => {
 export const getHOSReviewFiles = async (departmentId) => {
   try {
     const filesRef = collection(db, 'files');
-    
+
     // Try with compound query first
     try {
       const q = query(
-        filesRef, 
+        filesRef,
         where('departmentId', '==', departmentId),
         where('workflowStatus', '==', 'PENDING_HOS_REVIEW'),
         orderBy('submittedForReviewAt', 'desc')
@@ -1459,15 +1618,15 @@ export const getHOSReviewFiles = async (departmentId) => {
       return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (indexError) {
       console.warn('Compound query failed, using simple query:', indexError);
-      
+
       // Fallback to simple query and filter in memory
       const q = query(
-        filesRef, 
+        filesRef,
         where('workflowStatus', '==', 'PENDING_HOS_REVIEW')
       );
       const snapshot = await getDocs(q);
       const allFiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
+
       // Filter by departmentId in memory
       return allFiles.filter(file => file.departmentId === departmentId)
         .sort((a, b) => {
@@ -1488,11 +1647,11 @@ export const getHOSReviewFiles = async (departmentId) => {
 export const getHOSAllFiles = async (departmentId) => {
   try {
     const filesRef = collection(db, 'files');
-    
+
     // Include APPROVED so HOS can see files in Approved tab after exam unit approves
     const statuses = ['PENDING_HOS_REVIEW', 'PENDING_EXAM_UNIT', 'NEEDS_REVISION', 'APPROVED'];
     const allFiles = [];
-    
+
     for (const status of statuses) {
       try {
         // Try compound query first
@@ -1514,7 +1673,7 @@ export const getHOSAllFiles = async (departmentId) => {
         allFiles.push(...files);
       }
     }
-    
+
     // Sort by: pending review first, then needs revision, then approved; within same status by date (newest first)
     return allFiles.sort((a, b) => {
       const order = { PENDING_HOS_REVIEW: 0, PENDING_EXAM_UNIT: 1, NEEDS_REVISION: 2, APPROVED: 3 };
@@ -1538,7 +1697,7 @@ export const getExamUnitReviewFiles = async () => {
   try {
     const filesRef = collection(db, 'files');
     const q = query(
-      filesRef, 
+      filesRef,
       where('workflowStatus', '==', 'PENDING_EXAM_UNIT'),
       orderBy('hosApprovedAt', 'desc')
     );
@@ -1587,7 +1746,7 @@ export const getApprovedFiles = async () => {
   try {
     const filesRef = collection(db, 'files');
     const q = query(
-      filesRef, 
+      filesRef,
       where('workflowStatus', '==', 'APPROVED'),
       orderBy('examUnitApprovedAt', 'desc')
     );

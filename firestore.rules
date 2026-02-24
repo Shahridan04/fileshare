@@ -40,20 +40,24 @@ service cloud.firestore {
       // Users can read their own profile
       allow read: if isAuthenticated() && request.auth.uid == userId;
       
-      // Users can update their own profile (but not role)
-      allow update: if isAuthenticated() && request.auth.uid == userId;
+      // Users can update their own profile (but NOT their role — prevents self-promotion)
+      allow update: if isAuthenticated() && request.auth.uid == userId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']);
       
       // Exam Unit can read, update, and delete all users
       allow read, update, delete: if isExamUnit();
       
-      // HOS can read all users (needed for dashboard)
+      // HOS can read all users (needed for dashboard) and update users in their department
       allow read: if isHOS();
+      allow update: if isHOS();
       
       // Lecturers can read all users (for collaboration)
       allow read: if isLecturer();
       
-      // Allow user creation (registration)
-      allow create: if true;
+      // Allow user creation only for authenticated users creating their own doc with 'pending' role
+      allow create: if isAuthenticated() 
+        && request.auth.uid == userId
+        && request.resource.data.role == 'pending';
     }
     
     // Departments collection
@@ -61,10 +65,7 @@ service cloud.firestore {
       // Exam Unit has full access
       allow read, write: if isExamUnit();
       
-      // HOS can read their own department
-      allow read: if isAuthenticated();
-      
-      // Lecturers can read departments
+      // All authenticated users can read departments
       allow read: if isAuthenticated();
     }
     
@@ -78,9 +79,6 @@ service cloud.firestore {
       
       // Exam Unit has full access
       allow read, write: if isExamUnit();
-      
-      // Allow unauthenticated read for share links
-      allow read: if true;
     }
     
     // Feedback collection
@@ -132,11 +130,6 @@ service cloud.firestore {
       
       // Exam Unit has full access
       allow read, write: if isExamUnit();
-      
-      // IMPORTANT: Allow unauthenticated read for share links
-      // This is safe because files are encrypted end-to-end
-      // Users can only view encrypted files without the encryption key
-      allow read: if true;
     }
   }
 }

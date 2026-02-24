@@ -19,7 +19,7 @@ export default function VersionHistoryModal({ fileId, currentVersion, encryption
       setLoading(true);
       const versionList = await getFileVersions(fileId);
       setVersions(versionList.reverse()); // Show newest first
-      
+
       // Auto-expand the current version
       if (currentVersion) {
         setExpandedVersions({ [currentVersion]: true });
@@ -40,7 +40,7 @@ export default function VersionHistoryModal({ fileId, currentVersion, encryption
 
   const handleDownloadVersion = (version) => {
     // Navigate to file view with specific version's encryption key
-    navigate(`/file?id=${fileId}&key=${encodeURIComponent(version.encryptionKey)}`);
+    navigate(`/file?id=${fileId}#key=${encodeURIComponent(version.encryptionKey)}`);
     onClose();
   };
 
@@ -79,15 +79,14 @@ export default function VersionHistoryModal({ fileId, currentVersion, encryption
               {versions.map((version, index) => {
                 const isExpanded = expandedVersions[version.version];
                 const isCurrent = version.version === currentVersion;
-                
+
                 return (
                   <div
                     key={version.id}
-                    className={`border-2 rounded-lg transition-all ${
-                      isCurrent 
-                        ? 'border-blue-500 bg-blue-50' 
+                    className={`border-2 rounded-lg transition-all ${isCurrent
+                        ? 'border-blue-500 bg-blue-50'
                         : 'border-gray-200 bg-white hover:border-gray-300'
-                    }`}
+                      }`}
                   >
                     {/* Version Header */}
                     <div className="p-4">
@@ -103,7 +102,7 @@ export default function VersionHistoryModal({ fileId, currentVersion, encryption
                               <ChevronRight className="w-4 h-4 text-gray-600" />
                             )}
                           </button>
-                          
+
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <span className={`font-semibold ${isCurrent ? 'text-blue-700' : 'text-gray-900'}`}>
@@ -146,11 +145,10 @@ export default function VersionHistoryModal({ fileId, currentVersion, encryption
 
                         <button
                           onClick={() => handleDownloadVersion(version)}
-                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                            isCurrent
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${isCurrent
                               ? 'bg-blue-600 text-white hover:bg-blue-700'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
+                            }`}
                         >
                           <Download className="w-4 h-4" />
                           Download

@@ -58,7 +58,7 @@ exports.sendEmailNotification = functions.https.onCall(async (data, context) => 
     // Get user's email preferences
     const userDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
     const userData = userDoc.data();
-    
+
     // Check if user has email notifications enabled
     if (userData?.emailNotificationsEnabled === false) {
       console.log(`Email notifications disabled for user ${context.auth.uid}`);
@@ -69,16 +69,16 @@ exports.sendEmailNotification = functions.https.onCall(async (data, context) => 
     // IMPORTANT: The "from" email must be verified in SendGrid
     // Go to SendGrid Dashboard → Settings → Sender Authentication → Verify a Single Sender
     // Use YOUR PERSONAL EMAIL that you can verify (e.g., yourname@gmail.com)
-    const fromEmail = functions.config().sendgrid?.from_email || 
-                      process.env.SENDGRID_FROM_EMAIL;
-    
+    const fromEmail = functions.config().sendgrid?.from_email ||
+      process.env.SENDGRID_FROM_EMAIL;
+
     if (!fromEmail) {
       throw new functions.https.HttpsError(
         'failed-precondition',
         'SendGrid from_email not configured. Set it via: firebase functions:config:set sendgrid.from_email="your-email@example.com"'
       );
     }
-    
+
     const msg = {
       to: to,
       from: {
@@ -96,12 +96,12 @@ exports.sendEmailNotification = functions.https.onCall(async (data, context) => 
     return { success: true, message: 'Email sent successfully' };
   } catch (error) {
     console.error('Error sending email:', error);
-    
+
     // Handle SendGrid errors
     if (error.response) {
       console.error('SendGrid error response:', error.response.body);
     }
-    
+
     throw new functions.https.HttpsError(
       'internal',
       'Failed to send email',
@@ -123,7 +123,7 @@ exports.onNotificationCreated = functions.firestore
     try {
       // Get user data to get email address
       const userDoc = await admin.firestore().collection('users').doc(notification.userId).get();
-      
+
       if (!userDoc.exists) {
         console.log(`User ${notification.userId} not found`);
         return null;
@@ -151,12 +151,12 @@ exports.onNotificationCreated = functions.firestore
       // Send email
       // IMPORTANT: The "from" email must be verified in SendGrid
       const fromEmail = functions.config().sendgrid?.from_email || process.env.SENDGRID_FROM_EMAIL;
-      
+
       if (!fromEmail) {
         console.error('SendGrid from_email not configured. Set it via: firebase functions:config:set sendgrid.from_email="your-email@example.com"');
         return null;
       }
-      
+
       const msg = {
         to: userEmail,
         from: {
@@ -180,13 +180,13 @@ exports.onNotificationCreated = functions.firestore
       return null;
     } catch (error) {
       console.error(`Error sending email for notification ${notificationId}:`, error);
-      
+
       // Mark email as failed
       await admin.firestore().collection('notifications').doc(notificationId).update({
         emailSent: false,
         emailError: error.message
       });
-      
+
       return null;
     }
   });
@@ -198,7 +198,15 @@ function generateEmailHTML(notification, userData) {
   const { type, title, message, fileName } = notification;
   const userName = userData.displayName || userData.name || 'User';
   const appUrl = 'https://file-share-f8260.web.app';
-  
+
+  // Escape HTML entities to prevent XSS
+  const esc = (str) => str ? String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;') : '';
+
+  const safeTitle = esc(title);
+  const safeMessage = esc(message);
+  const safeFileName = esc(fileName);
+  const safeUserName = esc(userName);
+
   const getTypeColor = (type) => {
     switch (type) {
       case 'approval': return '#10b981';
@@ -210,7 +218,7 @@ function generateEmailHTML(notification, userData) {
   };
 
   const color = getTypeColor(type);
-  
+
   return `
     <!DOCTYPE html>
     <html>
@@ -225,14 +233,14 @@ function generateEmailHTML(notification, userData) {
             <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
               <tr>
                 <td style="background: ${color}; padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
-                  <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">${title}</h1>
+                  <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">${safeTitle}</h1>
                 </td>
               </tr>
               <tr>
                 <td style="padding: 40px 30px;">
-                  <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">Hello ${userName},</p>
-                  <p style="margin: 0 0 30px 0; color: #4b5563; font-size: 15px; line-height: 1.6;">${message}</p>
-                  ${fileName ? `<div style="background-color: #f9fafb; border-left: 4px solid ${color}; padding: 16px; margin: 20px 0; border-radius: 4px;"><p style="margin: 0; color: #1f2937; font-size: 14px; font-weight: 600;">📄 File: ${fileName}</p></div>` : ''}
+                  <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">Hello ${safeUserName},</p>
+                  <p style="margin: 0 0 30px 0; color: #4b5563; font-size: 15px; line-height: 1.6;">${safeMessage}</p>
+                  ${safeFileName ? `<div style="background-color: #f9fafb; border-left: 4px solid ${color}; padding: 16px; margin: 20px 0; border-radius: 4px;"><p style="margin: 0; color: #1f2937; font-size: 14px; font-weight: 600;">📄 File: ${safeFileName}</p></div>` : ''}
                   <div style="text-align: center; margin: 30px 0;">
                     <a href="${appUrl}/dashboard" style="display: inline-block; background-color: ${color}; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 15px;">View in Dashboard</a>
                   </div>
@@ -259,7 +267,7 @@ function generateEmailText(notification, userData) {
   const { title, message, fileName } = notification;
   const userName = userData.displayName || userData.name || 'User';
   const appUrl = 'https://file-share-f8260.web.app';
-  
+
   return `
 ${title}
 

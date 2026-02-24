@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { onAuthChange } from './services/authService';
 import { isEncryptionAvailable } from './services/encryptionService';
 import { getUserRole } from './services/firestoreService';
+import { ToastProvider } from './components/ToastProvider';
 
 // Pages
 import Login from './pages/Login';
@@ -94,6 +95,56 @@ function PublicRoute({ children }) {
   return children;
 }
 
+// Role-Protected Route Component (checks both auth and role)
+function RoleProtectedRoute({ children, allowedRoles }) {
+  const [user, setUser] = useState(null);
+  const [userRole, setUserRole] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthChange(async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        try {
+          const role = await getUserRole(currentUser.uid);
+          setUserRole(role);
+        } catch (err) {
+          console.error('Error getting user role:', err);
+        }
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (userRole === 'pending') {
+    return <Navigate to="/pending" replace />;
+  }
+
+  // Check if user has required role
+  if (allowedRoles && !allowedRoles.includes(userRole)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
 function App() {
   const [encryptionSupported, setEncryptionSupported] = useState(true);
 
@@ -125,107 +176,109 @@ function App() {
   }
 
   return (
-    <Router>
-      <Routes>
-        {/* Public Routes */}
-        <Route
-          path="/login"
-          element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          }
-        />
-        <Route
-          path="/register"
-          element={
-            <PublicRoute>
-              <Register />
-            </PublicRoute>
-          }
-        />
+    <ToastProvider>
+      <Router>
+        <Routes>
+          {/* Public Routes */}
+          <Route
+            path="/login"
+            element={
+              <PublicRoute>
+                <Login />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <PublicRoute>
+                <Register />
+              </PublicRoute>
+            }
+          />
 
-        {/* Protected Routes */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/upload"
-          element={
-            <ProtectedRoute>
-              <Upload />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute>
-              <Settings />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute>
-              <AdminPanel />
-            </ProtectedRoute>
-          }
-        />
+          {/* Protected Routes */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/upload"
+            element={
+              <ProtectedRoute>
+                <Upload />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <RoleProtectedRoute allowedRoles={['exam_unit']}>
+                <AdminPanel />
+              </RoleProtectedRoute>
+            }
+          />
 
-        {/* Pending Approval Page */}
-        <Route path="/pending" element={<PendingApproval />} />
+          {/* Pending Approval Page */}
+          <Route path="/pending" element={<PendingApproval />} />
 
-        {/* HOS Review Page */}
-        <Route
-          path="/hos-review"
-          element={
-            <ProtectedRoute>
-              <HOSReview />
-            </ProtectedRoute>
-          }
-        />
+          {/* HOS Review Page */}
+          <Route
+            path="/hos-review"
+            element={
+              <RoleProtectedRoute allowedRoles={['hos', 'exam_unit']}>
+                <HOSReview />
+              </RoleProtectedRoute>
+            }
+          />
 
-        {/* Exam Unit Review Page */}
-        <Route
-          path="/exam-review"
-          element={
-            <ProtectedRoute>
-              <ExamUnitReview />
-            </ProtectedRoute>
-          }
-        />
+          {/* Exam Unit Review Page */}
+          <Route
+            path="/exam-review"
+            element={
+              <RoleProtectedRoute allowedRoles={['exam_unit']}>
+                <ExamUnitReview />
+              </RoleProtectedRoute>
+            }
+          />
 
-        {/* Public file viewing (with key in URL) */}
-        <Route path="/file" element={<ViewFile />} />
-        <Route path="/view/:fileId" element={<ViewFile />} />
+          {/* Public file viewing (with key in URL) */}
+          <Route path="/file" element={<ViewFile />} />
+          <Route path="/view/:fileId" element={<ViewFile />} />
 
-        {/* Default redirect */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        
-        {/* 404 */}
-        <Route
-          path="*"
-          element={
-            <div className="min-h-screen flex items-center justify-center bg-gray-50">
-              <div className="text-center">
-                <h1 className="text-6xl font-bold text-gray-900 mb-4">404</h1>
-                <p className="text-gray-600 mb-4">Page not found</p>
-                <a href="/dashboard" className="text-blue-600 hover:text-blue-700 font-medium">
-                  Go to Dashboard
-                </a>
+          {/* Default redirect */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+          {/* 404 */}
+          <Route
+            path="*"
+            element={
+              <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                  <h1 className="text-6xl font-bold text-gray-900 mb-4">404</h1>
+                  <p className="text-gray-600 mb-4">Page not found</p>
+                  <a href="/dashboard" className="text-blue-600 hover:text-blue-700 font-medium">
+                    Go to Dashboard
+                  </a>
+                </div>
               </div>
-            </div>
-          }
-        />
-      </Routes>
-    </Router>
+            }
+          />
+        </Routes>
+      </Router>
+    </ToastProvider>
   );
 }
 

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getCurrentUser } from '../services/authService';
-import { 
-  getUserRole, 
+import {
+  getUserRole,
   getHOSReviewFiles,
   getHOSAllFiles,
-  hosApproveFile, 
+  hosApproveFile,
   hosRejectFile,
   getFileFeedback,
   getDepartmentById,
@@ -14,17 +14,20 @@ import {
 import Navbar from '../components/Navbar';
 import ReviewFileCard from '../components/ReviewFileCard';
 import PDFViewer from '../components/PDFViewer';
-import { 
-  CheckCircle, 
-  XCircle, 
-  FileText, 
+import HOSUserManagement from '../components/HOSUserManagement';
+import FeedbackFileInput from '../components/FeedbackFileInput';
+import {
+  CheckCircle,
+  XCircle,
+  FileText,
   Clock,
   MessageSquare,
   AlertCircle,
   Loader2,
   GraduationCap,
   Search,
-  Building2
+  Building2,
+  Users
 } from 'lucide-react';
 import { formatFileSize, formatDate } from '../utils/helpers';
 
@@ -48,16 +51,18 @@ export default function HOSReview() {
     totalFiles: 0
   });
   const [selectedFileForView, setSelectedFileForView] = useState(null);
-  const [activeTab, setActiveTab] = useState(location.state?.tab || 'pending'); // 'pending', 'revision', 'approved'
+  const [activeTab, setActiveTab] = useState(location.state?.tab || 'pending'); // 'pending', 'revision', 'approved', 'team'
+  const [userDeptId, setUserDeptId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [allHOSFiles, setAllHOSFiles] = useState([]);
+  const [feedbackAttachment, setFeedbackAttachment] = useState(null);
 
   useEffect(() => {
     checkAccessAndLoad();
   }, []);
 
   useEffect(() => {
-    if (location.state?.tab && ['pending', 'revision', 'approved'].includes(location.state.tab)) {
+    if (location.state?.tab && ['pending', 'revision', 'approved', 'team'].includes(location.state.tab)) {
       setActiveTab(location.state.tab);
     }
   }, [location.state?.tab]);
@@ -88,12 +93,13 @@ export default function HOSReview() {
     try {
       setLoading(true);
       const user = getCurrentUser();
-      
+
       // Get user's department from users collection
       const { getAllUsers } = await import('../services/firestoreService');
       const allUsers = await getAllUsers();
       const currentUser = allUsers.find(u => u.id === user.uid);
       const deptId = currentUser?.department;
+      setUserDeptId(deptId);
 
       console.log('HOS Review - Department ID:', deptId);
 
@@ -107,13 +113,13 @@ export default function HOSReview() {
       const allFiles = await getHOSAllFiles(deptId);
       console.log('HOS Review - All Files:', allFiles);
       setAllHOSFiles(allFiles);
-      
+
       // Get only pending review files for stats
       const reviewFiles = allFiles.filter(f => f.workflowStatus === 'PENDING_HOS_REVIEW');
-      
+
       // Get all department files for stats
       const allDeptFiles = await getDepartmentFiles(deptId);
-      
+
       // Get department info
       const dept = await getDepartmentById(deptId);
       setDepartment(dept);
@@ -121,7 +127,7 @@ export default function HOSReview() {
       // Calculate stats
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
       const approvedToday = allDeptFiles.filter(file => {
         if (!file.hosApprovedAt) return false;
         const approvedDate = file.hosApprovedAt.toDate ? file.hosApprovedAt.toDate() : new Date(file.hosApprovedAt);
@@ -146,7 +152,7 @@ export default function HOSReview() {
     setSelectedFile(file);
     setReviewAction(action);
     setComments('');
-    
+
     // Load existing feedback
     try {
       const fileFeedback = await getFileFeedback(file.id);
@@ -154,7 +160,7 @@ export default function HOSReview() {
     } catch (err) {
       console.error('Error loading feedback:', err);
     }
-    
+
     setShowReviewModal(true);
   };
 
@@ -162,7 +168,7 @@ export default function HOSReview() {
     if (!selectedFile) return;
 
     const user = getCurrentUser();
-    
+
     try {
       setSubmitting(true);
       setError('');
@@ -183,7 +189,7 @@ export default function HOSReview() {
       setSelectedFile(null);
       setComments('');
       await loadReviewFiles();
-      
+
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error submitting review:', err);
@@ -282,11 +288,10 @@ export default function HOSReview() {
           <div className="flex border-b border-gray-200">
             <button
               onClick={() => setActiveTab('pending')}
-              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'pending'
-                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
+              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'pending'
+                ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
             >
               <Clock className="w-5 h-5" />
               Pending Review
@@ -298,11 +303,10 @@ export default function HOSReview() {
             </button>
             <button
               onClick={() => setActiveTab('revision')}
-              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'revision'
-                  ? 'text-red-600 border-b-2 border-red-600 bg-red-50'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
+              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'revision'
+                ? 'text-red-600 border-b-2 border-red-600 bg-red-50'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
             >
               <XCircle className="w-5 h-5" />
               Needs Revision
@@ -314,11 +318,10 @@ export default function HOSReview() {
             </button>
             <button
               onClick={() => setActiveTab('approved')}
-              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'approved'
-                  ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
+              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'approved'
+                ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
             >
               <CheckCircle className="w-5 h-5" />
               Approved Files
@@ -326,98 +329,117 @@ export default function HOSReview() {
                 {allHOSFiles.filter(f => f.workflowStatus === 'PENDING_EXAM_UNIT' || f.workflowStatus === 'APPROVED').length}
               </span>
             </button>
+            <button
+              onClick={() => setActiveTab('team')}
+              className={`flex-1 px-6 py-4 font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'team'
+                ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+            >
+              <Users className="w-5 h-5" />
+              Team
+            </button>
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="mb-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by file, subject, or lecturer name..."
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+        {/* Team Management Tab */}
+        {activeTab === 'team' && userDeptId && (
+          <HOSUserManagement departmentId={userDeptId} onRefresh={loadReviewFiles} />
+        )}
+
+        {/* Search Bar - only show for file tabs */}
+        {activeTab !== 'team' && (
+          <div className="mb-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by file, subject, or lecturer name..."
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Files List */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-          <div className="p-6 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">
-              {activeTab === 'pending' && 'Files Pending Review'}
-              {activeTab === 'revision' && 'Files Needing Revision'}
-              {activeTab === 'approved' && 'Approved Files'}
-            </h2>
-            <p className="text-sm text-gray-600 mt-1">
-              {activeTab === 'pending' && 'Files submitted by lecturers awaiting your review'}
-              {activeTab === 'revision' && 'Files that need revision from lecturers'}
-              {activeTab === 'approved' && 'Files you approved - yellow for waiting Exam Unit, green for final approval'}
-            </p>
-          </div>
+        {/* Files List - only show for file tabs */}
+        {activeTab !== 'team' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">
+                {activeTab === 'pending' && 'Files Pending Review'}
+                {activeTab === 'revision' && 'Files Needing Revision'}
+                {activeTab === 'approved' && 'Approved Files'}
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                {activeTab === 'pending' && 'Files submitted by lecturers awaiting your review'}
+                {activeTab === 'revision' && 'Files that need revision from lecturers'}
+                {activeTab === 'approved' && 'Files you approved - yellow for waiting Exam Unit, green for final approval'}
+              </p>
+            </div>
 
-          {(() => {
-            // Filter files based on active tab
-            let filteredFiles = [];
-            if (activeTab === 'pending') {
-              filteredFiles = allHOSFiles.filter(f => f.workflowStatus === 'PENDING_HOS_REVIEW');
-            } else if (activeTab === 'revision') {
-              filteredFiles = allHOSFiles.filter(f => f.workflowStatus === 'NEEDS_REVISION');
-            } else if (activeTab === 'approved') {
-              filteredFiles = allHOSFiles.filter(f => f.workflowStatus === 'PENDING_EXAM_UNIT' || f.workflowStatus === 'APPROVED');
-            }
+            {(() => {
+              // Filter files based on active tab
+              let filteredFiles = [];
+              if (activeTab === 'pending') {
+                filteredFiles = allHOSFiles.filter(f => f.workflowStatus === 'PENDING_HOS_REVIEW');
+              } else if (activeTab === 'revision') {
+                filteredFiles = allHOSFiles.filter(f => f.workflowStatus === 'NEEDS_REVISION');
+              } else if (activeTab === 'approved') {
+                filteredFiles = allHOSFiles.filter(f => f.workflowStatus === 'PENDING_EXAM_UNIT' || f.workflowStatus === 'APPROVED');
+              }
 
-            // Apply search filter
-            if (searchQuery.trim()) {
-              const query = searchQuery.toLowerCase();
-              filteredFiles = filteredFiles.filter(file => 
-                file.fileName?.toLowerCase().includes(query) ||
-                file.subjectCode?.toLowerCase().includes(query) ||
-                file.subjectName?.toLowerCase().includes(query) ||
-                file.createdByName?.toLowerCase().includes(query)
-              );
-            }
+              // Apply search filter
+              if (searchQuery.trim()) {
+                const query = searchQuery.toLowerCase();
+                filteredFiles = filteredFiles.filter(file =>
+                  file.fileName?.toLowerCase().includes(query) ||
+                  file.subjectCode?.toLowerCase().includes(query) ||
+                  file.subjectName?.toLowerCase().includes(query) ||
+                  file.createdByName?.toLowerCase().includes(query)
+                );
+              }
 
-            if (filteredFiles.length === 0) {
+              if (filteredFiles.length === 0) {
+                return (
+                  <div className="p-12 text-center">
+                    <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-600 mb-2">
+                      {searchQuery ? 'No files match your search' :
+                        activeTab === 'pending' ? 'No files pending review' :
+                          activeTab === 'revision' ? 'No files needing revision' :
+                            'No approved files yet'}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {searchQuery ? 'Try adjusting your search query' :
+                        activeTab === 'pending' ? 'Files submitted by lecturers will appear here' :
+                          activeTab === 'revision' ? 'Files you request revision for will appear here' :
+                            'Files you approve will appear here'}
+                    </p>
+                  </div>
+                );
+              }
+
               return (
-                <div className="p-12 text-center">
-                  <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-2">
-                    {searchQuery ? 'No files match your search' : 
-                      activeTab === 'pending' ? 'No files pending review' :
-                      activeTab === 'revision' ? 'No files needing revision' :
-                      'No approved files yet'}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {searchQuery ? 'Try adjusting your search query' : 
-                      activeTab === 'pending' ? 'Files submitted by lecturers will appear here' :
-                      activeTab === 'revision' ? 'Files you request revision for will appear here' :
-                      'Files you approve will appear here'}
-                  </p>
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {filteredFiles.map((file) => (
+                      <ReviewFileCard
+                        key={file.id}
+                        file={file}
+                        onViewPDF={(file) => setSelectedFileForView(file)}
+                        onApprove={file.workflowStatus === 'PENDING_HOS_REVIEW' ? (file) => handleReview(file, 'approve') : undefined}
+                        onReject={file.workflowStatus === 'PENDING_HOS_REVIEW' ? (file) => handleReview(file, 'reject') : undefined}
+                        showComments={false}
+                      />
+                    ))}
+                  </div>
                 </div>
               );
-            }
-
-            return (
-              <div className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {filteredFiles.map((file) => (
-                    <ReviewFileCard
-                      key={file.id}
-                      file={file}
-                      onViewPDF={(file) => setSelectedFileForView(file)}
-                      onApprove={file.workflowStatus === 'PENDING_HOS_REVIEW' ? (file) => handleReview(file, 'approve') : undefined}
-                      onReject={file.workflowStatus === 'PENDING_HOS_REVIEW' ? (file) => handleReview(file, 'reject') : undefined}
-                      showComments={false}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
-        </div>
+            })()}
+          </div>
+        )}
       </div>
 
       {/* Review Modal */}
@@ -449,9 +471,8 @@ export default function HOSReview() {
                           <span className="text-gray-500">•</span>
                           <span className="text-gray-500">{fb.reviewerRole}</span>
                           <span className="text-gray-500">•</span>
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            fb.action === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded text-xs ${fb.action === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                            }`}>
                             {fb.action}
                           </span>
                         </div>
@@ -473,11 +494,19 @@ export default function HOSReview() {
                   rows={4}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder={
-                    reviewAction === 'approve' 
+                    reviewAction === 'approve'
                       ? 'Add any notes or suggestions...'
                       : 'Please explain what needs to be revised...'
                   }
                   required={reviewAction === 'reject'}
+                />
+              </div>
+
+              {/* Feedback File Attachment */}
+              <div className="mb-6">
+                <FeedbackFileInput
+                  onFileChange={setFeedbackAttachment}
+                  disabled={submitting}
                 />
               </div>
 
@@ -486,11 +515,10 @@ export default function HOSReview() {
                 <button
                   onClick={handleSubmitReview}
                   disabled={submitting || (reviewAction === 'reject' && !comments.trim())}
-                  className={`flex-1 py-3 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                    reviewAction === 'approve' 
-                      ? 'bg-green-600 hover:bg-green-700' 
-                      : 'bg-orange-600 hover:bg-orange-700'
-                  }`}
+                  className={`flex-1 py-3 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${reviewAction === 'approve'
+                    ? 'bg-green-600 hover:bg-green-700'
+                    : 'bg-orange-600 hover:bg-orange-700'
+                    }`}
                 >
                   {submitting ? 'Submitting...' : reviewAction === 'approve' ? 'Approve & Forward' : 'Request Revision'}
                 </button>
