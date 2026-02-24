@@ -71,11 +71,17 @@ service cloud.firestore {
     
     // File Versions collection
     match /fileVersions/{versionId} {
-      // Anyone authenticated can read versions
-      allow read: if isAuthenticated();
+      // Authorized users can read versions if they have access to the parent file
+      allow read: if isAuthenticated() && (
+        isExamUnit() ||
+        isHOS() ||
+        get(/databases/$(database)/documents/files/$(resource.data.fileId)).data.createdBy == request.auth.uid ||
+        request.auth.token.email in get(/databases/$(database)/documents/files/$(resource.data.fileId)).data.sharedWith
+      );
       
       // File owners can create versions
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        get(/databases/$(database)/documents/files/$(request.resource.data.fileId)).data.createdBy == request.auth.uid;
       
       // Exam Unit has full access
       allow read, write: if isExamUnit();
@@ -130,6 +136,10 @@ service cloud.firestore {
       
       // Exam Unit has full access
       allow read, write: if isExamUnit();
+<<<<<<< HEAD
+=======
+      
+>>>>>>> 8606ae1e190dd64d94a39782bbf2782a624b12e2
     }
   }
 }

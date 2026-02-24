@@ -1650,6 +1650,7 @@ export const getHOSAllFiles = async (departmentId) => {
 
     // Include APPROVED so HOS can see files in Approved tab after exam unit approves
     const statuses = ['PENDING_HOS_REVIEW', 'PENDING_EXAM_UNIT', 'NEEDS_REVISION', 'APPROVED'];
+<<<<<<< HEAD
     const allFiles = [];
 
     for (const status of statuses) {
@@ -1672,6 +1673,27 @@ export const getHOSAllFiles = async (departmentId) => {
           .filter(file => file.departmentId === departmentId);
         allFiles.push(...files);
       }
+=======
+    let allFiles = [];
+    
+    try {
+      // Try compound query first with 'in' operator
+      const q = query(
+        filesRef,
+        where('departmentId', '==', departmentId),
+        where('workflowStatus', 'in', statuses)
+      );
+      const snapshot = await getDocs(q);
+      allFiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (err) {
+      console.warn('Compound query with "in" failed, falling back to simple query:', err);
+      // Fallback: get all files with relevant statuses and filter by department in memory
+      const q = query(filesRef, where('workflowStatus', 'in', statuses));
+      const snapshot = await getDocs(q);
+      allFiles = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(file => file.departmentId === departmentId);
+>>>>>>> 8606ae1e190dd64d94a39782bbf2782a624b12e2
     }
 
     // Sort by: pending review first, then needs revision, then approved; within same status by date (newest first)
@@ -1716,17 +1738,13 @@ export const getExamUnitAllFiles = async () => {
   try {
     const filesRef = collection(db, 'files');
     const statuses = ['PENDING_EXAM_UNIT', 'NEEDS_REVISION', 'APPROVED'];
-    const allFiles = [];
 
-    for (const status of statuses) {
-      const q = query(
-        filesRef,
-        where('workflowStatus', '==', status)
-      );
-      const snapshot = await getDocs(q);
-      const files = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      allFiles.push(...files);
-    }
+    const q = query(
+      filesRef,
+      where('workflowStatus', 'in', statuses)
+    );
+    const snapshot = await getDocs(q);
+    const allFiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     return allFiles.sort((a, b) => {
       const aTime = a.hosApprovedAt?.toDate?.() || a.createdAt?.toDate?.() || new Date(0);
