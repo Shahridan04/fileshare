@@ -9,6 +9,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
   serverTimestamp,
   arrayUnion,
   arrayRemove,
@@ -1650,32 +1651,8 @@ export const getHOSAllFiles = async (departmentId) => {
 
     // Include APPROVED so HOS can see files in Approved tab after exam unit approves
     const statuses = ['PENDING_HOS_REVIEW', 'PENDING_EXAM_UNIT', 'NEEDS_REVISION', 'APPROVED'];
-<<<<<<< HEAD
-    const allFiles = [];
-
-    for (const status of statuses) {
-      try {
-        // Try compound query first
-        const q = query(
-          filesRef,
-          where('departmentId', '==', departmentId),
-          where('workflowStatus', '==', status)
-        );
-        const snapshot = await getDocs(q);
-        const files = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        allFiles.push(...files);
-      } catch (err) {
-        // Fallback: get all files with status and filter by department
-        const q = query(filesRef, where('workflowStatus', '==', status));
-        const snapshot = await getDocs(q);
-        const files = snapshot.docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter(file => file.departmentId === departmentId);
-        allFiles.push(...files);
-      }
-=======
     let allFiles = [];
-    
+
     try {
       // Try compound query first with 'in' operator
       const q = query(
@@ -1693,7 +1670,6 @@ export const getHOSAllFiles = async (departmentId) => {
       allFiles = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() }))
         .filter(file => file.departmentId === departmentId);
->>>>>>> 8606ae1e190dd64d94a39782bbf2782a624b12e2
     }
 
     // Sort by: pending review first, then needs revision, then approved; within same status by date (newest first)
@@ -1774,4 +1750,412 @@ export const getApprovedFiles = async () => {
     console.error('Error getting approved files:', error);
     throw error;
   }
+};
+
+// ==================== AUDIT LOGGING ====================
+
+/**
+ * Log an audit event for accountability tracking
+ * @param {string} userId - User who performed the action
+ * @param {string} userEmail - Email of the user
+ * @param {string} action - Action type (FILE_UPLOAD, FILE_DOWNLOAD, FILE_DELETE, FILE_VIEW, etc.)
+ * @param {Object} details - Additional details about the action
+ */
+export const logAuditEvent = async (userId, userEmail, action, details = {}) => {
+  try {
+    const auditRef = collection(db, 'auditLogs');
+    await addDoc(auditRef, {
+      userId,
+      userEmail,
+      action,
+      details,
+      timestamp: serverTimestamp(),
+      createdAt: new Date().toISOString()
+    });
+    console.log(`📋 Audit log: ${action} by ${userEmail}`);
+  } catch (error) {
+    // Audit logging should never block the main operation
+    console.error('Error logging audit event:', error);
+  }
+};
+
+/**
+ * Get recent audit logs (for Admin Panel)
+ * @param {number} maxResults - Maximum number of logs to return
+ * @returns {Promise<Array>} Array of audit log entries
+ */
+export const getAuditLogs = async (maxResults = 50) => {
+  try {
+    const auditRef = collection(db, 'auditLogs');
+    const q = query(auditRef, orderBy('timestamp', 'desc'), limit(maxResults));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error getting audit logs:', error);
+    return [];
+  }
+};
+
+/**
+ * Get audit logs for a specific file
+ * @param {string} fileId - File ID to get logs for
+ * @returns {Promise<Array>} Array of audit log entries for the file
+ */
+export const getFileAuditLogs = async (fileId) => {
+  try {
+    const auditRef = collection(db, 'auditLogs');
+    const q = query(auditRef, where('details.fileId', '==', fileId), orderBy('timestamp', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error getting file audit logs:', error);
+    return [];
+  }
+};
+
+// ==================== PRE-REGISTERED USER WHITELIST ====================
+
+/**
+ * Add pre-registered users (whitelist) from Excel import.
+ * These entries allow auto-approval when the user self-registers.
+ * @param {Array} users - Array of { name, email, role, departmentId, subjects[] }
+ * @returns {Object} { added, skipped, errors }
+ */
+export const addPreRegisteredUsers = async (users) => {
+  const results = { added: 0, skipped: 0, errors: [] };
+
+  for (const user of users) {
+    try {
+      const email = user.email?.trim().toLowerCase();
+      if (!email) {
+        results.errors.push(`Missing email for row: ${user.name || 'unknown'}`);
+        continue;
+      }
+
+      // Check if already pre-registered
+      const preRegRef = collection(db, 'preRegisteredUsers');
+      const existing = query(preRegRef, where('email', '==', email));
+      const existingSnap = await getDocs(existing);
+
+      if (!existingSnap.empty) {
+        results.skipped++;
+        continue;
+      }
+
+      // Also check if already a registered user
+      const usersRef = collection(db, 'users');
+      const existingUser = query(usersRef, where('email', '==', email));
+      const existingUserSnap = await getDocs(existingUser);
+
+      if (!existingUserSnap.empty) {
+        results.skipped++;
+        continue;
+      }
+
+      await addDoc(preRegRef, {
+        name: user.name || '',
+        email: email,
+        role: user.role || 'lecturer',
+        departmentId: user.departmentId || null,
+        departmentName: user.departmentName || null,
+        subjects: user.subjects || [],
+        claimed: false,
+        createdAt: serverTimestamp()
+      });
+
+      results.added++;
+    } catch (err) {
+      results.errors.push(`Error adding ${user.email}: ${err.message}`);
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Check if an email is pre-registered (whitelist lookup).
+ * @param {string} email
+ * @returns {Object|null} Pre-registration data or null
+ */
+export const getPreRegisteredUser = async (email) => {
+  try {
+    const preRegRef = collection(db, 'preRegisteredUsers');
+    const q = query(preRegRef, where('email', '==', email.trim().toLowerCase()), where('claimed', '==', false));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) return null;
+
+    const doc = snapshot.docs[0];
+    return { id: doc.id, ...doc.data() };
+  } catch (error) {
+    console.error('Error checking pre-registered user:', error);
+    return null;
+  }
+};
+
+/**
+ * Mark a pre-registered entry as claimed (used after user registers).
+ * @param {string} preRegId - Document ID in preRegisteredUsers collection
+ */
+export const markPreRegisteredUserClaimed = async (preRegId) => {
+  try {
+    const preRegDocRef = doc(db, 'preRegisteredUsers', preRegId);
+    await updateDoc(preRegDocRef, {
+      claimed: true,
+      claimedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error('Error marking pre-registered user as claimed:', error);
+  }
+};
+
+/**
+ * Get all pre-registered users
+ * @returns {Array}
+ */
+export const getAllPreRegisteredUsers = async () => {
+  try {
+    const preRegRef = collection(db, 'preRegisteredUsers');
+    const q = query(preRegRef, orderBy('createdAt', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    console.error('Error getting pre-registered users:', error);
+    return [];
+  }
+};
+
+// ==================== BATCH DEPARTMENT IMPORT ====================
+
+/**
+ * Batch import department structure from Excel.
+ * Rows: { departmentName, deptCode, courseName, courseCode, subjectName, subjectCode }
+ * Creates departments/courses/subjects that don't already exist.
+ * @returns {Object} { departments, courses, subjects, skipped }
+ */
+export const batchImportDepartmentStructure = async (rows) => {
+  const results = { departments: 0, courses: 0, subjects: 0, skipped: 0, errors: [] };
+
+  // Group rows by department
+  const deptMap = {};
+  for (const row of rows) {
+    const deptKey = row.deptCode?.trim();
+    if (!deptKey) continue;
+
+    if (!deptMap[deptKey]) {
+      deptMap[deptKey] = {
+        name: row.departmentName?.trim() || '',
+        code: deptKey,
+        courses: {}
+      };
+    }
+
+    const courseKey = row.courseCode?.trim();
+    if (courseKey) {
+      if (!deptMap[deptKey].courses[courseKey]) {
+        deptMap[deptKey].courses[courseKey] = {
+          courseName: row.courseName?.trim() || '',
+          courseCode: courseKey,
+          subjects: []
+        };
+      }
+
+      const subjectCode = row.subjectCode?.trim();
+      if (subjectCode) {
+        deptMap[deptKey].courses[courseKey].subjects.push({
+          subjectName: row.subjectName?.trim() || '',
+          subjectCode: subjectCode
+        });
+      }
+    }
+  }
+
+  // Get existing departments
+  const existingDepts = await getDepartments();
+
+  for (const [deptCode, deptData] of Object.entries(deptMap)) {
+    try {
+      // Find or create department
+      let dept = existingDepts.find(d => d.code === deptCode);
+      let deptId;
+
+      if (!dept) {
+        deptId = await createDepartment({ name: deptData.name, code: deptData.code });
+        results.departments++;
+        // Re-fetch dept to get its courses
+        dept = { id: deptId, courses: [] };
+      } else {
+        deptId = dept.id;
+      }
+
+      // Process courses
+      const existingCourses = dept.courses || [];
+
+      for (const [courseCode, courseData] of Object.entries(deptData.courses)) {
+        let course = existingCourses.find(c => c.courseCode === courseCode);
+
+        if (!course) {
+          const courseId = await addCourseToDepartment(deptId, {
+            courseName: courseData.courseName,
+            courseCode: courseData.courseCode
+          });
+          results.courses++;
+
+          // Re-fetch to get course data
+          const updatedDept = await getDepartmentById(deptId);
+          course = (updatedDept?.courses || []).find(c => c.courseCode === courseCode);
+        }
+
+        if (!course) continue;
+
+        // Process subjects
+        const existingSubjects = course.subjects || [];
+
+        for (const subjectData of courseData.subjects) {
+          const subjectExists = existingSubjects.find(s => s.subjectCode === subjectData.subjectCode);
+
+          if (!subjectExists) {
+            await addSubjectToCourse(deptId, course.courseId, subjectData);
+            results.subjects++;
+          } else {
+            results.skipped++;
+          }
+        }
+      }
+    } catch (err) {
+      results.errors.push(`Error processing dept ${deptCode}: ${err.message}`);
+    }
+  }
+
+  return results;
+};
+
+// ==================== DEADLINE MANAGEMENT ====================
+
+/**
+ * Set a deadline at a specific level (department, course, or subject).
+ * Stored as a field on the department document to keep data co-located.
+ * @param {string} deptId
+ * @param {string|null} courseId - null = department-level deadline
+ * @param {string|null} subjectId - null = course-level deadline
+ * @param {Date} deadline
+ */
+export const setDeadline = async (deptId, courseId = null, subjectId = null, deadline) => {
+  try {
+    const deptRef = doc(db, 'departments', deptId);
+    const deptSnap = await getDoc(deptRef);
+
+    if (!deptSnap.exists()) throw new Error('Department not found');
+
+    const deptData = deptSnap.data();
+
+    if (!courseId && !subjectId) {
+      // Department-level deadline
+      await updateDoc(deptRef, {
+        deadline: deadline ? Timestamp.fromDate(new Date(deadline)) : null,
+        updatedAt: serverTimestamp()
+      });
+    } else {
+      // Course or subject level — modify courses array
+      const courses = deptData.courses || [];
+      const courseIndex = courses.findIndex(c => c.courseId === courseId);
+      if (courseIndex === -1) throw new Error('Course not found');
+
+      if (!subjectId) {
+        // Course-level deadline
+        courses[courseIndex].deadline = deadline ? Timestamp.fromDate(new Date(deadline)) : null;
+      } else {
+        // Subject-level deadline
+        const subjects = courses[courseIndex].subjects || [];
+        const subjectIndex = subjects.findIndex(s => s.subjectId === subjectId);
+        if (subjectIndex === -1) throw new Error('Subject not found');
+
+        courses[courseIndex].subjects[subjectIndex].deadline = deadline
+          ? Timestamp.fromDate(new Date(deadline))
+          : null;
+      }
+
+      await updateDoc(deptRef, {
+        courses,
+        updatedAt: serverTimestamp()
+      });
+    }
+  } catch (error) {
+    console.error('Error setting deadline:', error);
+    throw error;
+  }
+};
+
+/**
+ * Clear a deadline at a specific level.
+ */
+export const clearDeadline = async (deptId, courseId = null, subjectId = null) => {
+  return setDeadline(deptId, courseId, subjectId, null);
+};
+
+/**
+ * Get the effective deadline for a subject by resolving the cascade:
+ * Subject deadline > Course deadline > Department deadline
+ * @returns {Date|null}
+ */
+export const getEffectiveDeadline = (dept, courseId, subjectId) => {
+  if (!dept) return null;
+
+  const deptDeadline = dept.deadline
+    ? (dept.deadline.toDate ? dept.deadline.toDate() : new Date(dept.deadline))
+    : null;
+
+  const course = (dept.courses || []).find(c => c.courseId === courseId);
+  if (!course) return deptDeadline;
+
+  const courseDeadline = course.deadline
+    ? (course.deadline.toDate ? course.deadline.toDate() : new Date(course.deadline))
+    : null;
+
+  const subject = (course.subjects || []).find(s => s.subjectId === subjectId);
+  if (!subject) return courseDeadline || deptDeadline;
+
+  const subjectDeadline = subject.deadline
+    ? (subject.deadline.toDate ? subject.deadline.toDate() : new Date(subject.deadline))
+    : null;
+
+  // Subject > Course > Department (most specific wins)
+  return subjectDeadline || courseDeadline || deptDeadline;
+};
+
+/**
+ * Get effective deadlines for all assigned subjects of a lecturer.
+ * @param {Array} assignedSubjects - [{deptId, courseId, subjectId, ...}]
+ * @param {Array} departments - All departments data
+ * @returns {Object} Map of subjectId -> { deadline, daysLeft, status }
+ */
+export const getSubjectDeadlines = (assignedSubjects, departments) => {
+  const deadlineMap = {};
+
+  for (const subject of assignedSubjects) {
+    const dept = departments.find(d => d.id === subject.deptId);
+    const deadline = getEffectiveDeadline(dept, subject.courseId, subject.subjectId);
+
+    if (deadline) {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const deadlineDate = new Date(deadline);
+      deadlineDate.setHours(0, 0, 0, 0);
+      const diffTime = deadlineDate.getTime() - now.getTime();
+      const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      let status = 'normal'; // > 7 days
+      if (daysLeft < 0) status = 'overdue';
+      else if (daysLeft <= 3) status = 'critical'; // 0-3 days
+      else if (daysLeft <= 7) status = 'warning'; // 4-7 days
+
+      deadlineMap[subject.subjectId] = {
+        deadline: deadlineDate,
+        daysLeft,
+        status
+      };
+    }
+  }
+
+  return deadlineMap;
 };

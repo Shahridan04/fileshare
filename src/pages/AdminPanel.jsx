@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser } from '../services/authService';
-import { 
-  getPendingUsers, 
+import {
+  getPendingUsers,
   getAllUsers,
   updateUserRole,
   updateUser,
@@ -21,14 +21,17 @@ import {
   deleteSubject,
   assignLecturerToSubject,
   unassignLecturerFromSubject,
+  getAuditLogs,
 } from '../services/firestoreService';
 import Navbar from '../components/Navbar';
-import { 
-  Users, 
-  Building2, 
-  BookOpen, 
-  FileText, 
-  CheckCircle, 
+import BatchImportTab from '../components/BatchImportTab';
+import DeadlineSettingsTab from '../components/DeadlineSettingsTab';
+import {
+  Users,
+  Building2,
+  BookOpen,
+  FileText,
+  CheckCircle,
   XCircle,
   Plus,
   Trash2,
@@ -43,7 +46,10 @@ import {
   UserPlus,
   Edit2,
   Save,
-  X
+  X,
+  ClipboardList,
+  FileSpreadsheet,
+  Calendar
 } from 'lucide-react';
 
 export default function AdminPanel() {
@@ -53,10 +59,12 @@ export default function AdminPanel() {
   const [pendingUsers, setPendingUsers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditLogsLoading, setAuditLogsLoading] = useState(false);
   const [expandedDepts, setExpandedDepts] = useState({});
   const [expandedCourses, setExpandedCourses] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Approval modal states
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -64,7 +72,7 @@ export default function AdminPanel() {
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [showCreateDeptInModal, setShowCreateDeptInModal] = useState(false);
   const [newDeptInModal, setNewDeptInModal] = useState({ name: '', code: '' });
-  
+
   // Department/Course/Subject modals
   const [showAddDept, setShowAddDept] = useState(false);
   const [showAddCourse, setShowAddCourse] = useState(false);
@@ -74,11 +82,11 @@ export default function AdminPanel() {
   const [subjectForm, setSubjectForm] = useState({ subjectName: '', subjectCode: '' });
   const [selectedDeptForCourse, setSelectedDeptForCourse] = useState(null);
   const [selectedCourseForSubject, setSelectedCourseForSubject] = useState(null);
-  
+
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  
+
   // Edit modal states
   const [editingUser, setEditingUser] = useState(null);
   const [editingDept, setEditingDept] = useState(null);
@@ -120,7 +128,7 @@ export default function AdminPanel() {
         getAllUsers(),
         getDepartments()
       ]);
-      
+
       setPendingUsers(pending);
       setAllUsers(users);
       setDepartments(depts);
@@ -176,7 +184,7 @@ export default function AdminPanel() {
       setError('');
 
       const updateData = { department: selectedDepartment };
-      
+
       if (selectedRole === 'hos' && selectedDepartment) {
         // Assign HOS to department
         await assignHOSToDepartment(
@@ -187,14 +195,14 @@ export default function AdminPanel() {
       }
 
       await updateUserRole(selectedUser.id, selectedRole, updateData);
-      
+
       setSuccess(`User approved as ${selectedRole}!`);
       setShowApprovalModal(false);
       setSelectedUser(null);
       setSelectedRole('');
       setSelectedDepartment('');
       await loadData();
-      
+
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error approving user:', err);
@@ -328,7 +336,7 @@ export default function AdminPanel() {
   };
 
   // ==================== EDIT & DELETE HANDLERS ====================
-  
+
   const handleEditUser = (user) => {
     setEditingUser(user);
     setEditForm({
@@ -481,13 +489,13 @@ export default function AdminPanel() {
             <ArrowLeft className="w-4 h-4" />
             <span className="text-sm font-medium">Back to Dashboard</span>
           </button>
-          
+
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Exam Unit Admin Panel</h1>
               <p className="text-gray-600 mt-1">Manage users, departments, courses, and subjects</p>
             </div>
-            
+
             {/* Quick Stats */}
             <div className="flex gap-4">
               <div className="text-center">
@@ -539,11 +547,10 @@ export default function AdminPanel() {
                 setActiveTab('pending-users');
                 setSearchQuery('');
               }}
-              className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${
-                activeTab === 'pending-users'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${activeTab === 'pending-users'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
             >
               <UserPlus className="w-5 h-5" />
               Pending Approvals
@@ -558,11 +565,10 @@ export default function AdminPanel() {
                 setActiveTab('all-users');
                 setSearchQuery('');
               }}
-              className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${
-                activeTab === 'all-users'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${activeTab === 'all-users'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
             >
               <Users className="w-5 h-5" />
               All Users ({allUsers.length})
@@ -572,14 +578,61 @@ export default function AdminPanel() {
                 setActiveTab('departments');
                 setSearchQuery('');
               }}
-              className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${
-                activeTab === 'departments'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${activeTab === 'departments'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
             >
               <Building2 className="w-5 h-5" />
               Departments ({departments.length})
+            </button>
+            <button
+              onClick={async () => {
+                setActiveTab('audit-logs');
+                setSearchQuery('');
+                setAuditLogsLoading(true);
+                try {
+                  const logs = await getAuditLogs(50);
+                  setAuditLogs(logs);
+                } catch (err) {
+                  console.error('Error loading audit logs:', err);
+                } finally {
+                  setAuditLogsLoading(false);
+                }
+              }}
+              className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${activeTab === 'audit-logs'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
+            >
+              <ClipboardList className="w-5 h-5" />
+              Audit Logs
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('batch-import');
+                setSearchQuery('');
+              }}
+              className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${activeTab === 'batch-import'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
+            >
+              <FileSpreadsheet className="w-5 h-5" />
+              Batch Import
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('deadline-settings');
+                setSearchQuery('');
+              }}
+              className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${activeTab === 'deadline-settings'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
+            >
+              <Calendar className="w-5 h-5" />
+              Deadline Settings
             </button>
           </div>
 
@@ -683,7 +736,7 @@ export default function AdminPanel() {
                       {filteredAllUsers.map(user => {
                         const dept = departments.find(d => d.id === user.department);
                         const subjectCount = user.assignedSubjects?.length || 0;
-                        
+
                         return (
                           <tr key={user.id} className="hover:bg-gray-50">
                             <td className="px-4 py-3">
@@ -698,18 +751,17 @@ export default function AdminPanel() {
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">{user.email}</td>
                             <td className="px-4 py-3">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                user.role === 'exam_unit' ? 'bg-purple-100 text-purple-700' :
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${user.role === 'exam_unit' ? 'bg-purple-100 text-purple-700' :
                                 user.role === 'hos' ? 'bg-green-100 text-green-700' :
-                                user.role === 'lecturer' ? 'bg-blue-100 text-blue-700' :
-                                user.role === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                'bg-gray-100 text-gray-700'
-                              }`}>
+                                  user.role === 'lecturer' ? 'bg-blue-100 text-blue-700' :
+                                    user.role === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                      'bg-gray-100 text-gray-700'
+                                }`}>
                                 {user.role === 'exam_unit' ? '👑 Exam Unit' :
-                                 user.role === 'hos' ? '🎓 HOS' :
-                                 user.role === 'lecturer' ? '👨‍🏫 Lecturer' :
-                                 user.role === 'pending' ? '⏳ Pending' :
-                                 user.role}
+                                  user.role === 'hos' ? '🎓 HOS' :
+                                    user.role === 'lecturer' ? '👨‍🏫 Lecturer' :
+                                      user.role === 'pending' ? '⏳ Pending' :
+                                        user.role}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">
@@ -789,7 +841,7 @@ export default function AdminPanel() {
                         <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 flex-1">
-                              <button 
+                              <button
                                 onClick={() => toggleDept(dept.id)}
                                 className="p-1 hover:bg-white rounded transition-colors"
                               >
@@ -985,6 +1037,105 @@ export default function AdminPanel() {
                 )}
               </div>
             )}
+
+            {/* Audit Logs Tab */}
+            {activeTab === 'audit-logs' && (
+              <div>
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Activity Audit Log</h3>
+                  <p className="text-sm text-gray-600 mt-1">Track all file operations for accountability</p>
+                </div>
+
+                {auditLogsLoading ? (
+                  <div className="text-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-2" />
+                    <p className="text-gray-600">Loading audit logs...</p>
+                  </div>
+                ) : auditLogs.length === 0 ? (
+                  <div className="text-center py-12">
+                    <ClipboardList className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600 mb-2">No audit logs yet</p>
+                    <p className="text-sm text-gray-500">File operations will be logged here automatically</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b-2 border-gray-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Timestamp</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">User</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Action</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Details</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {auditLogs.map(log => {
+                          const actionColors = {
+                            'FILE_UPLOAD': 'bg-green-100 text-green-700',
+                            'FILE_DOWNLOAD': 'bg-blue-100 text-blue-700',
+                            'FILE_DELETE': 'bg-red-100 text-red-700',
+                            'FILE_VIEW': 'bg-purple-100 text-purple-700',
+                          };
+                          const actionLabels = {
+                            'FILE_UPLOAD': '📤 Upload',
+                            'FILE_DOWNLOAD': '📥 Download',
+                            'FILE_DELETE': '🗑️ Delete',
+                            'FILE_VIEW': '👁️ View',
+                          };
+                          const timestamp = log.timestamp?.toDate?.()
+                            ? log.timestamp.toDate().toLocaleString()
+                            : log.createdAt || 'N/A';
+
+                          return (
+                            <tr key={log.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                                {timestamp}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                {log.userEmail || 'Unknown'}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${actionColors[log.action] || 'bg-gray-100 text-gray-700'}`}>
+                                  {actionLabels[log.action] || log.action}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600">
+                                {log.details?.fileName && (
+                                  <span className="font-medium">{log.details.fileName}</span>
+                                )}
+                                {log.details?.integrityVerified === true && (
+                                  <span className="ml-2 text-xs text-green-600">✅ Integrity OK</span>
+                                )}
+                                {log.details?.integrityVerified === false && (
+                                  <span className="ml-2 text-xs text-red-600">⚠️ Integrity Failed</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Batch Import Tab */}
+            {activeTab === 'batch-import' && (
+              <BatchImportTab
+                departments={departments}
+                allUsers={allUsers}
+                onDataChanged={loadData}
+              />
+            )}
+
+            {/* Deadline Settings Tab */}
+            {activeTab === 'deadline-settings' && (
+              <DeadlineSettingsTab
+                departments={departments}
+                onDataChanged={loadData}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -1012,14 +1163,14 @@ export default function AdminPanel() {
                       type="text"
                       placeholder="Department Name (e.g., Computer Science)"
                       value={newDeptInModal.name}
-                      onChange={(e) => setNewDeptInModal({...newDeptInModal, name: e.target.value})}
+                      onChange={(e) => setNewDeptInModal({ ...newDeptInModal, name: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                     <input
                       type="text"
                       placeholder="Department Code (e.g., CS)"
                       value={newDeptInModal.code}
-                      onChange={(e) => setNewDeptInModal({...newDeptInModal, code: e.target.value})}
+                      onChange={(e) => setNewDeptInModal({ ...newDeptInModal, code: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                     <div className="flex gap-2">

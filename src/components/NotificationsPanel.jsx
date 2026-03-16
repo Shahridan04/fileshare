@@ -7,6 +7,11 @@ import {
   markAllNotificationsAsRead,
   getUnreadNotificationCount
 } from '../services/notificationService';
+import {
+  deleteNotification,
+  clearAllNotifications,
+  clearReadNotifications
+} from '../services/firestoreService';
 import { useNavigate } from 'react-router-dom';
 
 export default function NotificationsPanel() {
@@ -253,66 +258,60 @@ export default function NotificationsPanel() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              
+
               {/* Filter Buttons */}
               <div className="flex items-center gap-1 flex-wrap mb-2">
                 <button
                   onClick={() => setFilterType('all')}
-                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                    filterType === 'all'
+                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${filterType === 'all'
                       ? 'bg-white text-blue-700'
                       : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
+                    }`}
                 >
                   All
                 </button>
                 <button
                   onClick={() => setFilterType('approval')}
-                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                    filterType === 'approval'
+                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${filterType === 'approval'
                       ? 'bg-white text-green-700'
                       : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
+                    }`}
                 >
                   Approvals
                 </button>
                 <button
                   onClick={() => setFilterType('rejection')}
-                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                    filterType === 'rejection'
+                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${filterType === 'rejection'
                       ? 'bg-white text-red-700'
                       : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
+                    }`}
                 >
                   Rejections
                 </button>
                 <button
                   onClick={() => setFilterType('review_request')}
-                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                    filterType === 'review_request'
+                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${filterType === 'review_request'
                       ? 'bg-white text-blue-700'
                       : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
+                    }`}
                 >
                   Reviews
                 </button>
                 <button
                   onClick={() => setFilterType('feedback')}
-                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                    filterType === 'feedback'
+                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${filterType === 'feedback'
                       ? 'bg-white text-purple-700'
                       : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
+                    }`}
                 >
                   Feedback
                 </button>
                 <button
                   onClick={() => setFilterType('role_assigned')}
-                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                    filterType === 'role_assigned'
+                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${filterType === 'role_assigned'
                       ? 'bg-white text-indigo-700'
                       : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
+                    }`}
                 >
                   Role Updates
                 </button>
@@ -453,9 +452,8 @@ function NotificationItem({ notification, onMarkAsRead, onDelete, onClick, getIc
   return (
     <div
       onClick={() => onClick(notification)}
-      className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-100 ${
-        !notification.read ? 'bg-blue-50/50' : ''
-      }`}
+      className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-100 ${!notification.read ? 'bg-blue-50/50' : ''
+        }`}
     >
       <div className="flex items-start gap-3">
         <div className="flex-shrink-0 mt-1">

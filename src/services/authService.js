@@ -25,44 +25,77 @@ export const registerUser = async (email, password, displayName, requestedDepart
     // Update profile with display name
     await updateProfile(user, { displayName });
 
-    // Create user document in Firestore with 'pending' role
-    const userData = {
-      uid: user.uid,
-      email: user.email,
-      displayName: displayName,
-      role: 'pending', // New users start as pending
-      createdAt: new Date(),
-      photoURL: user.photoURL || null
-    };
+    // Check if this email is pre-registered (whitelist auto-approve)
+    const firestoreService = await import('./firestoreService');
+    const preRegEntry = await firestoreService.getPreRegisteredUser(email);
 
-    // Add requested department if provided
-    if (requestedDepartment) {
-      userData.requestedDepartment = requestedDepartment;
-    }
+    let userData;
 
-    await setDoc(doc(db, 'users', user.uid), userData);
+    if (preRegEntry) {
+      // Auto-approve: use pre-registered role & department
+      userData = {
+        uid: user.uid,
+        email: user.email,
+        displayName: displayName,
+        role: preRegEntry.role || 'lecturer',
+        department: preRegEntry.departmentId || null,
+        createdAt: new Date(),
+        photoURL: user.photoURL || null,
+        autoApproved: true,
+        preRegisteredBy: 'exam_unit'
+      };
 
-    // Notify Exam Unit about new user registration
-    try {
-      const firestoreService = await import('./firestoreService');
+      // Mark whitelist entry as claimed
+      await firestoreService.markPreRegisteredUserClaimed(preRegEntry.id);
 
-      // Get all Exam Unit users
-      const allUsers = await firestoreService.getAllUsers();
-      const examUnitUsers = allUsers.filter(u => u.role === 'exam_unit');
+      await setDoc(doc(db, 'users', user.uid), userData);
 
-      // Notify each Exam Unit user
-      for (const examUnitUser of examUnitUsers) {
+      // Notify user about auto-approval
+      try {
         await firestoreService.createNotification({
-          userId: examUnitUser.id,
-          type: 'review_request',
-          title: 'New User Registration',
-          message: `${displayName} (${user.email}) has registered and is pending approval`,
-          actionUrl: '/admin'
+          userId: user.uid,
+          type: 'role_assigned',
+          title: 'Account Auto-Approved!',
+          message: `Your account has been automatically approved as ${userData.role.replace('_', ' ').toUpperCase()}. Welcome!`,
+          actionUrl: '/dashboard'
         });
+      } catch (notifError) {
+        console.warn('Failed to send auto-approve notification:', notifError);
       }
-    } catch (notifError) {
-      // Non-critical - log but don't fail registration
-      console.warn('Failed to notify Exam Unit about new user:', notifError);
+    } else {
+      // Standard flow: pending approval
+      userData = {
+        uid: user.uid,
+        email: user.email,
+        displayName: displayName,
+        role: 'pending',
+        createdAt: new Date(),
+        photoURL: user.photoURL || null
+      };
+
+      if (requestedDepartment) {
+        userData.requestedDepartment = requestedDepartment;
+      }
+
+      await setDoc(doc(db, 'users', user.uid), userData);
+
+      // Notify Exam Unit about new user registration
+      try {
+        const allUsers = await firestoreService.getAllUsers();
+        const examUnitUsers = allUsers.filter(u => u.role === 'exam_unit');
+
+        for (const examUnitUser of examUnitUsers) {
+          await firestoreService.createNotification({
+            userId: examUnitUser.id,
+            type: 'review_request',
+            title: 'New User Registration',
+            message: `${displayName} (${user.email}) has registered and is pending approval`,
+            actionUrl: '/admin'
+          });
+        }
+      } catch (notifError) {
+        console.warn('Failed to notify Exam Unit about new user:', notifError);
+      }
     }
 
     return user;

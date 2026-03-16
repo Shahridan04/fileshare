@@ -300,6 +300,11 @@ export default function FileCard({ file, isOwner, onDeleted, onSelect, isSelecte
             <StatusIcon className="w-3 h-3" />
             {statusInfo.label}
           </div>
+          {file.isLate && (
+            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-red-100 text-red-700 border border-red-300">
+              🕐 LATE
+            </div>
+          )}
         </div>
 
         {/* Revision requested by: HOS or Exam Unit (for lecturer / owner) */}

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { generateAESKey, encryptFile } from '../services/encryptionService';
+import { generateAESKey, encryptFile, generateHash } from '../services/encryptionService';
 import { uploadEncryptedFile } from '../services/storageService';
-import { saveFileMetadata, getLecturerAssignedSubjects, getUserRole, createFileVersion } from '../services/firestoreService';
+import { saveFileMetadata, getLecturerAssignedSubjects, getUserRole, createFileVersion, logAuditEvent, getDepartments, getEffectiveDeadline } from '../services/firestoreService';
 import { getCurrentUser } from '../services/authService';
 import { isValidFileType, isValidFileSize, formatFileSize, generateId } from '../utils/helpers';
 import { MAX_FILE_SIZE } from '../utils/constants';
@@ -30,13 +30,7 @@ export default function Upload() {
   const [assignedSubjects, setAssignedSubjects] = useState([]);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [submissionDeadline, setSubmissionDeadline] = useState('');
-
-  // Get minimum date (today)
-  const getMinDate = () => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  };
+  const [allDepartments, setAllDepartments] = useState([]);
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -62,6 +56,10 @@ export default function Upload() {
         if (subjects.length > 0) {
           setSelectedSubject(subjects[0]);
         }
+
+        // Load departments for deadline checking
+        const depts = await getDepartments();
+        setAllDepartments(depts);
       } catch (err) {
         console.error('Error loading user data:', err);
         setError('Failed to load user data');
@@ -114,9 +112,11 @@ export default function Upload() {
     setProgress(0);
 
     try {
-      // Step 1: Generate encryption key
-      setProgress(20);
+      // Step 1: Generate encryption key & hash original file
+      setProgress(15);
       const encryptionKey = await generateAESKey();
+      const originalBuffer = await selectedFile.arrayBuffer();
+      const fileHash = await generateHash(originalBuffer);
 
       // Step 2: Encrypt file
       setProgress(40);
@@ -145,14 +145,13 @@ export default function Upload() {
         encryptionKey: encryptionKey,
         downloadURL: downloadURL,
         encrypted: true,
+        fileHash: fileHash,
         category: selectedCategory,
         createdBy: user.uid,
         createdByName: user.displayName || user.email,
         workflowStatus: 'DRAFT',
         version: 1,
-        versionDescription: 'Initial version',
-        submissionDeadline: submissionDeadline ? new Date(submissionDeadline) : null,
-        hasDeadline: !!submissionDeadline
+        versionDescription: 'Initial version'
       };
 
       // Add subject info if lecturer
@@ -163,6 +162,23 @@ export default function Upload() {
         metadata.departmentId = selectedSubject.deptId;
         metadata.departmentName = selectedSubject.deptName;
         metadata.courseId = selectedSubject.courseId;
+
+        // Check deadline and flag if late
+        const dept = allDepartments.find(d => d.id === selectedSubject.deptId);
+        const effectiveDeadline = getEffectiveDeadline(dept, selectedSubject.courseId, selectedSubject.subjectId);
+        if (effectiveDeadline) {
+          const now = new Date();
+          now.setHours(0, 0, 0, 0);
+          const dl = new Date(effectiveDeadline);
+          dl.setHours(0, 0, 0, 0);
+          if (now > dl) {
+            metadata.isLate = true;
+            metadata.effectiveDeadline = dl;
+          } else {
+            metadata.isLate = false;
+            metadata.effectiveDeadline = dl;
+          }
+        }
       }
 
       const savedFileId = await saveFileMetadata(user.uid, metadata);
@@ -177,6 +193,14 @@ export default function Upload() {
         uploadedBy: user.uid,
         uploadedByName: user.displayName || user.email,
         description: 'Initial version'
+      });
+
+      // Step 5: Log audit event (non-blocking)
+      logAuditEvent(user.uid, user.email, 'FILE_UPLOAD', {
+        fileId: savedFileId,
+        fileName: selectedFile.name,
+        fileSize: selectedFile.size,
+        category: selectedCategory
       });
 
       setProgress(100);
@@ -337,27 +361,7 @@ export default function Upload() {
                 </div>
               )}
 
-              {/* Submission Deadline */}
-              {!uploading && !success && (
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      Submission Deadline (Optional)
-                    </div>
-                  </label>
-                  <input
-                    type="date"
-                    value={submissionDeadline}
-                    onChange={(e) => setSubmissionDeadline(e.target.value)}
-                    min={getMinDate()}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <p className="text-xs text-gray-500 mt-2">
-                    Set a deadline to receive reminders before the due date
-                  </p>
-                </div>
-              )}
+
 
 
               {/* Progress Bar */}

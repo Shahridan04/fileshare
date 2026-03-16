@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
-import { getFileMetadata, incrementDownloads } from '../services/firestoreService';
+import { getFileMetadata, incrementDownloads, logAuditEvent } from '../services/firestoreService';
 import { getCurrentUser } from '../services/authService';
 import { downloadEncryptedFile } from '../services/storageService';
-import { decryptFile } from '../services/encryptionService';
+import { decryptFile, generateHash } from '../services/encryptionService';
 import { downloadBlob, formatFileSize, formatDate } from '../utils/helpers';
 import Navbar from '../components/Navbar';
-import { Download, Loader2, AlertCircle, CheckCircle, File } from 'lucide-react';
+import { Download, Loader2, AlertCircle, CheckCircle, File, ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react';
 
 export default function ViewFile() {
   const [searchParams] = useSearchParams();
@@ -32,6 +32,7 @@ export default function ViewFile() {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [integrityStatus, setIntegrityStatus] = useState(null); // 'verified', 'failed', 'no_hash'
 
   useEffect(() => {
     if (!fileId) {
@@ -61,6 +62,7 @@ export default function ViewFile() {
     setDownloading(true);
     setError('');
     setSuccess('');
+    setIntegrityStatus(null);
 
     try {
       // Validate download URL
@@ -101,13 +103,44 @@ export default function ViewFile() {
 
       console.log('Decrypted file size:', decryptedBlob.size, 'bytes');
 
+      // Step: Verify file integrity (SHA-256 hash comparison)
+      let integrityVerified = null;
+      if (file.fileHash) {
+        try {
+          const decryptedBuffer = await decryptedBlob.arrayBuffer();
+          const downloadHash = await generateHash(decryptedBuffer);
+          if (downloadHash === file.fileHash) {
+            setIntegrityStatus('verified');
+            integrityVerified = true;
+            console.log('✅ File integrity verified - SHA-256 hash matches');
+          } else {
+            setIntegrityStatus('failed');
+            integrityVerified = false;
+            console.warn('⚠️ File integrity check FAILED - hash mismatch');
+          }
+        } catch (hashErr) {
+          console.error('Error verifying file integrity:', hashErr);
+          setIntegrityStatus('no_hash');
+        }
+      } else {
+        setIntegrityStatus('no_hash');
+        console.log('ℹ️ No hash stored for this file - uploaded before integrity feature');
+      }
+
       // Download file
       downloadBlob(decryptedBlob, file.fileName);
 
-      // Increment download count
+      // Increment download count & log audit event
       const user = getCurrentUser();
       const userEmail = user?.email || 'anonymous';
       await incrementDownloads(fileId, userEmail);
+
+      // Audit log (non-blocking)
+      logAuditEvent(user?.uid || 'anonymous', userEmail, 'FILE_DOWNLOAD', {
+        fileId,
+        fileName: file.fileName,
+        integrityVerified
+      });
 
       setSuccess('File downloaded and decrypted successfully!');
     } catch (err) {
@@ -213,6 +246,35 @@ export default function ViewFile() {
             <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
               <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
               <p className="text-sm text-green-800">{success}</p>
+            </div>
+          )}
+
+          {/* Integrity Verification Result */}
+          {integrityStatus === 'verified' && (
+            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-3">
+              <ShieldCheck className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-emerald-900">Integrity Verified ✅</p>
+                <p className="text-xs text-emerald-700">SHA-256 hash matches — file has not been tampered with.</p>
+              </div>
+            </div>
+          )}
+          {integrityStatus === 'failed' && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
+              <ShieldAlert className="w-5 h-5 text-red-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-red-900">Integrity Check Failed ⚠️</p>
+                <p className="text-xs text-red-700">SHA-256 hash mismatch — file may have been tampered with!</p>
+              </div>
+            </div>
+          )}
+          {integrityStatus === 'no_hash' && (
+            <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg flex items-center gap-3">
+              <ShieldQuestion className="w-5 h-5 text-gray-500 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-gray-700">Integrity Check Not Available</p>
+                <p className="text-xs text-gray-500">This file was uploaded before the integrity verification feature.</p>
+              </div>
             </div>
           )}
 

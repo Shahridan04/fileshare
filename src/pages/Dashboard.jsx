@@ -1,26 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  getUserFiles, 
-  getUserRole, 
+import {
+  getUserFiles,
+  getUserRole,
   getPendingUsers,
   getHOSReviewFiles,
   getExamUnitReviewFiles,
   getLecturerAssignedSubjects,
   getDepartments,
-  getAllFiles
+  getAllFiles,
+  getSubjectDeadlines
 } from '../services/firestoreService';
 import { getCurrentUser } from '../services/authService';
 import Navbar from '../components/Navbar';
 import FileCard from '../components/FileCard';
-import { 
-  Upload, 
-  FolderOpen, 
-  Share2, 
-  Loader2, 
-  Search, 
-  Filter, 
-  X, 
+import {
+  Upload,
+  FolderOpen,
+  Share2,
+  Loader2,
+  Search,
+  Filter,
+  X,
   FileCheck,
   Clock,
   CheckCircle,
@@ -65,7 +66,7 @@ export default function Dashboard() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState('all');
-  
+
   // Role-specific data
   const [userRole, setUserRole] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
@@ -79,6 +80,7 @@ export default function Dashboard() {
     approved: 0,
     totalDownloads: 0
   });
+  const [subjectDeadlineMap, setSubjectDeadlineMap] = useState({});
 
   useEffect(() => {
     loadDashboardData();
@@ -198,6 +200,13 @@ export default function Dashboard() {
       const subjects = await getLecturerAssignedSubjects(user.uid);
       setAssignedSubjects(subjects);
 
+      // Get departments for deadline resolution
+      const depts = await getDepartments();
+
+      // Compute effective deadlines for each subject
+      const deadlineMap = getSubjectDeadlines(subjects, depts);
+      setSubjectDeadlineMap(deadlineMap);
+
       // Get user's files
       const userFiles = await getUserFiles(user.uid);
       setMyFiles(userFiles);
@@ -218,7 +227,7 @@ export default function Dashboard() {
 
   const calculateStats = (files, reviewFiles = []) => {
     const draft = files.filter(f => f.workflowStatus === 'DRAFT').length;
-    const pendingReview = files.filter(f => 
+    const pendingReview = files.filter(f =>
       f.workflowStatus === 'PENDING_HOS_REVIEW' || f.workflowStatus === 'PENDING_EXAM_UNIT'
     ).length;
     const needsRevision = files.filter(f => f.workflowStatus === 'NEEDS_REVISION').length;
@@ -243,16 +252,16 @@ export default function Dashboard() {
   // Filter files
   const filterFiles = (files) => {
     return files.filter(file => {
-      const matchesSearch = !searchQuery || 
+      const matchesSearch = !searchQuery ||
         file.fileName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         file.subjectName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         file.subjectCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         file.departmentName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         file.createdByName?.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       const matchesCategory = selectedCategory === 'all' || file.category === selectedCategory;
       const matchesStatus = selectedStatus === 'all' || file.workflowStatus === selectedStatus;
-      
+
       return matchesSearch && matchesCategory && matchesStatus;
     });
   };
@@ -417,7 +426,7 @@ export default function Dashboard() {
           {/* HOS Status Cards */}
           {userRole === 'hos' && (
             <>
-              <div 
+              <div
                 onClick={() => navigate('/hos-review')}
                 className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg shadow-sm border border-yellow-200 p-4 hover:shadow-md transition-shadow cursor-pointer relative"
               >
@@ -455,7 +464,7 @@ export default function Dashboard() {
                 <p className="text-xs text-green-800">Ready to print</p>
               </div>
 
-              <div 
+              <div
                 onClick={() => navigate('/hos-review', { state: { tab: 'revision' } })}
                 className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg shadow-sm border border-red-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
               >
@@ -493,7 +502,7 @@ export default function Dashboard() {
                 <p className="text-xs text-green-800">Ready to print</p>
               </div>
 
-              <div 
+              <div
                 onClick={() => navigate('/exam-review')}
                 className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg shadow-sm border border-yellow-200 p-4 hover:shadow-md transition-shadow cursor-pointer relative"
               >
@@ -520,7 +529,7 @@ export default function Dashboard() {
                 )}
               </div>
 
-              <div 
+              <div
                 onClick={() => navigate('/admin')}
                 className="bg-gradient-to-r from-purple-600 to-purple-700 rounded-lg shadow-md p-4 cursor-pointer hover:shadow-lg transition-all relative"
               >
@@ -553,19 +562,71 @@ export default function Dashboard() {
 
         {/* Lecturer: Assigned Subjects */}
         {userRole === 'lecturer' && assignedSubjects.length > 0 && (
-          <div className="bg-white rounded-xl p-4 mb-6 border border-gray-200 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
+          <div className="bg-white rounded-xl p-5 mb-6 border border-gray-200 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
               <BookOpen className="w-5 h-5 text-blue-600" />
-              <h2 className="text-sm font-semibold text-gray-900">Your Assigned Subjects</h2>
+              <h2 className="text-base font-semibold text-gray-900">Your Assigned Subjects</h2>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {assignedSubjects.map(subject => (
-                <div key={subject.subjectId} className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-                  <span className="font-medium text-sm text-blue-900">{subject.subjectCode}</span>
-                  <span className="text-xs text-gray-600">•</span>
-                  <span className="text-sm text-gray-700">{subject.subjectName}</span>
-                </div>
-              ))}
+            <div className="space-y-3">
+              {assignedSubjects.map(subject => {
+                const dl = subjectDeadlineMap[subject.subjectId];
+                const deadlineBg = dl
+                  ? dl.status === 'overdue' ? 'bg-red-50 border-red-200'
+                    : dl.status === 'critical' ? 'bg-red-50 border-red-200'
+                      : dl.status === 'warning' ? 'bg-yellow-50 border-yellow-200'
+                        : 'bg-green-50 border-green-200'
+                  : 'bg-gray-50 border-gray-200';
+
+                return (
+                  <div key={subject.subjectId} className="flex items-stretch border border-gray-200 rounded-xl overflow-hidden hover:shadow-sm transition-shadow">
+                    {/* Left: Subject Info */}
+                    <div className="flex-1 p-4 flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <BookOpen className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900">{subject.subjectCode}</p>
+                        <p className="text-sm text-gray-600">{subject.subjectName}</p>
+                        {subject.deptName && (
+                          <p className="text-xs text-gray-400 mt-0.5">{subject.deptName}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right: Deadline Countdown */}
+                    <div className={`w-44 flex flex-col items-center justify-center p-4 border-l ${deadlineBg}`}>
+                      {dl ? (
+                        <>
+                          <span className={`text-3xl font-bold ${dl.status === 'overdue' ? 'text-red-600' :
+                              dl.status === 'critical' ? 'text-red-600' :
+                                dl.status === 'warning' ? 'text-yellow-600' :
+                                  'text-green-600'
+                            }`}>
+                            {dl.status === 'overdue' ? Math.abs(dl.daysLeft) : dl.daysLeft}
+                          </span>
+                          <span className={`text-xs font-semibold uppercase tracking-wide mt-0.5 ${dl.status === 'overdue' ? 'text-red-500' :
+                              dl.status === 'critical' ? 'text-red-500' :
+                                dl.status === 'warning' ? 'text-yellow-500' :
+                                  'text-green-500'
+                            }`}>
+                            {dl.status === 'overdue' ? 'days overdue' :
+                              dl.daysLeft === 0 ? 'Due today!' :
+                                dl.daysLeft === 1 ? 'day left' : 'days left'}
+                          </span>
+                          <span className="text-[10px] text-gray-400 mt-1">
+                            {dl.deadline.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-gray-400 text-lg">—</span>
+                          <span className="text-xs text-gray-400 mt-1">No deadline</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -619,16 +680,15 @@ export default function Dashboard() {
             </div>
 
             {/* Category Filter */}
-              <div>
+            <div>
               <p className="text-xs font-medium text-gray-700 mb-2">📁 Category</p>
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setSelectedCategory('all')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    selectedCategory === 'all'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${selectedCategory === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
                 >
                   All
                 </button>
@@ -636,11 +696,10 @@ export default function Dashboard() {
                   <button
                     key={cat.value}
                     onClick={() => setSelectedCategory(cat.value)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      selectedCategory === cat.value
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${selectedCategory === cat.value
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
                   >
                     {cat.label}
                   </button>
@@ -654,11 +713,10 @@ export default function Dashboard() {
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setSelectedStatus('all')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    selectedStatus === 'all'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${selectedStatus === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
                 >
                   All Status
                 </button>
@@ -666,11 +724,10 @@ export default function Dashboard() {
                   <button
                     key={key}
                     onClick={() => setSelectedStatus(key)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      selectedStatus === key
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${selectedStatus === key
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
                   >
                     {label}
                   </button>
@@ -698,7 +755,7 @@ export default function Dashboard() {
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
             <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-red-800">{error}</p>
-        </div>
+          </div>
         )}
 
         {/* Tabs */}
@@ -706,14 +763,13 @@ export default function Dashboard() {
           <div className="flex border-b border-gray-200 overflow-x-auto">
             {/* Show My Files tab only for Lecturers */}
             {userRole === 'lecturer' && (
-            <button
-              onClick={() => setActiveTab('my-files')}
-                className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${
-                activeTab === 'my-files'
+              <button
+                onClick={() => setActiveTab('my-files')}
+                className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${activeTab === 'my-files'
                   ? 'text-blue-600 border-b-2 border-blue-600'
                   : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
+                  }`}
+              >
                 <FolderOpen className="w-5 h-5" />
                 My Files ({filteredMyFiles.length})
               </button>
@@ -723,11 +779,10 @@ export default function Dashboard() {
             {(userRole === 'hos' || userRole === 'exam_unit') && (
               <button
                 onClick={() => setActiveTab('review')}
-                className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${
-                  activeTab === 'review'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
+                className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${activeTab === 'review'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+                  }`}
               >
                 <FileCheck className="w-5 h-5" />
                 {userRole === 'hos' ? 'Files to Review' : 'Final Review'} ({filteredReviewFiles.length})
@@ -736,22 +791,21 @@ export default function Dashboard() {
                     {filteredReviewFiles.length}
                   </span>
                 )}
-            </button>
+              </button>
             )}
 
             {/* Show All Files tab for Exam Unit */}
             {userRole === 'exam_unit' && (
-            <button
+              <button
                 onClick={() => setActiveTab('all-files')}
-                className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${
-                  activeTab === 'all-files'
+                className={`px-6 py-4 font-medium whitespace-nowrap flex items-center gap-2 ${activeTab === 'all-files'
                   ? 'text-blue-600 border-b-2 border-blue-600'
                   : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
+                  }`}
+              >
                 <FolderOpen className="w-5 h-5" />
                 All Files ({filteredMyFiles.length})
-            </button>
+              </button>
             )}
           </div>
 
@@ -760,11 +814,11 @@ export default function Dashboard() {
             {activeTab === 'my-files' && (
               <>
                 {filteredMyFiles.length === 0 ? (
-              <div className="text-center py-12">
+                  <div className="text-center py-12">
                     <FolderOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-600 mb-2">
-                      {searchQuery || selectedCategory !== 'all' 
-                        ? 'No files match your filters' 
+                      {searchQuery || selectedCategory !== 'all'
+                        ? 'No files match your filters'
                         : 'No files uploaded yet'}
                     </p>
                     <p className="text-sm text-gray-500 mb-4">
@@ -773,26 +827,26 @@ export default function Dashboard() {
                         : 'Upload your first encrypted file to get started'}
                     </p>
                     {!searchQuery && selectedCategory === 'all' && (
-                  <button
-                    onClick={() => navigate('/upload')}
+                      <button
+                        onClick={() => navigate('/upload')}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
+                      >
                         Upload File
-                  </button>
+                      </button>
                     )}
-                </div>
-              ) : (
+                  </div>
+                ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredMyFiles.map(file => (
-                    <FileCard
-                      key={file.id}
-                      file={file}
+                      <FileCard
+                        key={file.id}
+                        file={file}
                         isOwner={currentUser && file.createdBy === currentUser.uid}
                         userRole={userRole}
-                      onDeleted={handleFileDeleted}
-                    />
-                  ))}
-                </div>
+                        onDeleted={handleFileDeleted}
+                      />
+                    ))}
+                  </div>
                 )}
               </>
             )}
@@ -822,12 +876,12 @@ export default function Dashboard() {
                         {/* Files Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
                           {deptFiles.map(file => (
-                            <FileCard 
-                              key={file.id} 
-                              file={file} 
+                            <FileCard
+                              key={file.id}
+                              file={file}
                               isOwner={currentUser && file.createdBy === currentUser.uid}
                               userRole={userRole}
-                              onDeleted={handleFileDeleted} 
+                              onDeleted={handleFileDeleted}
                             />
                           ))}
                         </div>
@@ -838,12 +892,12 @@ export default function Dashboard() {
                   // HOS: Standard grid
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredReviewFiles.map(file => (
-                      <FileCard 
-                        key={file.id} 
-                        file={file} 
+                      <FileCard
+                        key={file.id}
+                        file={file}
                         isOwner={currentUser && file.createdBy === currentUser.uid}
                         userRole={userRole}
-                        onDeleted={handleFileDeleted} 
+                        onDeleted={handleFileDeleted}
                       />
                     ))}
                   </div>
@@ -854,12 +908,12 @@ export default function Dashboard() {
             {activeTab === 'all-files' && (
               <>
                 {filteredMyFiles.length === 0 ? (
-                <div className="text-center py-12">
+                  <div className="text-center py-12">
                     <FolderOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-600 mb-2">No files in system</p>
                     <p className="text-sm text-gray-500">All files will appear here</p>
-                </div>
-              ) : (
+                  </div>
+                ) : (
                   <div className="space-y-8">
                     {Object.entries(groupFilesByDepartment(filteredMyFiles)).map(([deptName, deptFiles]) => (
                       <div key={deptName}>
@@ -875,15 +929,15 @@ export default function Dashboard() {
                         {/* Files Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {deptFiles.map(file => (
-                    <FileCard
-                      key={file.id}
-                      file={file}
-                      isOwner={false}
+                            <FileCard
+                              key={file.id}
+                              file={file}
+                              isOwner={false}
                               userRole={userRole}
-                      onDeleted={handleFileDeleted}
-                    />
-                  ))}
-                </div>
+                              onDeleted={handleFileDeleted}
+                            />
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>

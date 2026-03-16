@@ -101,8 +101,8 @@ service cloud.firestore {
     
     // Notifications collection
     match /notifications/{notificationId} {
-      // Users can read their own notifications
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      // Users can read/query their own notifications
+      allow read: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid);
       
       // Users can update their own notifications (mark as read)
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
@@ -123,12 +123,15 @@ service cloud.firestore {
       allow create: if isAuthenticated() && 
         request.resource.data.createdBy == request.auth.uid;
       
-      // Owner can read, update, delete their files
-      allow read, update, delete: if isAuthenticated() && 
-        resource.data.createdBy == request.auth.uid;
+      // Owner can read, update, delete their files (check both createdBy and ownerId)
+      allow read, update, delete: if isAuthenticated() && (
+        resource.data.createdBy == request.auth.uid ||
+        resource.data.ownerId == request.auth.uid
+      );
       
-      // Users with shared access can read
+      // Users with shared access can read (with null safety)
       allow read: if isAuthenticated() && 
+        resource.data.sharedWith != null &&
         hasSharedAccess(resource.data.sharedWith);
       
       // HOS can read AND UPDATE files from their department (for approval/rejection)
@@ -136,10 +139,18 @@ service cloud.firestore {
       
       // Exam Unit has full access
       allow read, write: if isExamUnit();
-<<<<<<< HEAD
-=======
+    }
+    
+    // Audit Logs collection
+    match /auditLogs/{logId} {
+      // Any authenticated user can create audit logs
+      allow create: if isAuthenticated();
       
->>>>>>> 8606ae1e190dd64d94a39782bbf2782a624b12e2
+      // Only Exam Unit can read all audit logs
+      allow read: if isExamUnit();
+      
+      // No one can update or delete audit logs (immutable)
+      allow update, delete: if false;
     }
   }
 }
